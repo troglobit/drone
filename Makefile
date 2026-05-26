@@ -37,6 +37,7 @@ LWIP_SRCS = \
 	$(LWIPDIR)/netif/ethernet.c \
 	$(LWIPDIR)/api/tcpip.c \
 	$(LWIPDIR)/api/err.c \
+	$(LWIPDIR)/apps/mqtt/mqtt.c \
 	$(LWIPCONTRIB)/ports/freertos/sys_arch.c
 
 # --- Application + port glue -------------------------------------------------
@@ -44,6 +45,8 @@ APP_SRCS = \
 	src/main.c \
 	src/net.c \
 	src/ping.c \
+	src/mqtt_app.c \
+	src/test_broker.c \
 	port/lwip/qeneth_netif.c
 
 SRCS = $(APP_SRCS) $(KERNEL_SRCS) $(LWIP_SRCS)
@@ -60,8 +63,8 @@ INCS = \
 # --- Flags -------------------------------------------------------------------
 WARN     = -Wall -Wextra
 CFLAGS  ?= -O0 -g
-CFLAGS  += $(WARN) -pthread $(INCS)
-LDFLAGS += -pthread
+CFLAGS  += $(WARN) -pthread -MMD -MP $(INCS)
+LDFLAGS += -pthread -lm
 
 # Flat objects keyed by basename (all sources have unique basenames); vpath
 # locates each source in its directory.
@@ -81,6 +84,8 @@ $(BUILD)/obj/%.o: %.c | $(BUILD)/obj
 
 $(BUILD) $(BUILD)/obj:
 	@mkdir -p $@
+
+-include $(OBJS:.o=.d)
 
 run: $(BIN)
 	./$(BIN)

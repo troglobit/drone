@@ -56,7 +56,9 @@
 #define LWIP_ICMP                       1      /* auto echo reply */
 #define LWIP_RAW                        1      /* used by the pinger */
 #define LWIP_UDP                        1
-#define LWIP_TCP                        1      /* used by MQTT (M3) */
+#define LWIP_TCP                        1      /* used by MQTT */
+#define LWIP_ALTCP                      1      /* apps/mqtt uses the altcp API */
+#define LWIP_ALTCP_TLS                  0
 #define LWIP_DHCP                       0
 #define LWIP_DNS                        0
 #define LWIP_IGMP                       0

@@ -31,6 +31,8 @@ void app_cfg_defaults( struct app_cfg * c )
     c->mac[ 0 ] = 0x02; c->mac[ 1 ] = 0x00; c->mac[ 2 ] = 0x00;
     c->mac[ 3 ] = 0x00; c->mac[ 4 ] = 0x00; c->mac[ 5 ] = 0x02;
     strcpy( c->hostname, "frtos-dev" );
+    strcpy( c->broker_ip, "10.0.0.1" );
+    c->broker_port = 1883;
     c->ping_count = 4;
 }
 
@@ -65,6 +67,8 @@ static void usage( const char * argv0 )
              "  --gw ADDR               default gateway (default 10.0.0.1)\n"
              "  --mac XX:XX:XX:XX:XX:XX  interface MAC (default 02:00:00:00:00:02)\n"
              "  --hostname NAME         device hostname/id (default frtos-dev)\n"
+             "  --broker ADDR[:PORT]    MQTT broker (default 10.0.0.1:1883)\n"
+             "  --run-broker            act as the built-in test broker instead\n"
              "  --ping ADDR [COUNT]     send ICMP echo requests after bring-up\n",
              argv0 );
 }
@@ -83,6 +87,15 @@ int app_cfg_parse( struct app_cfg * c, int argc, char ** argv )
         else if( !strcmp( a, "--gw" ) )        { NEED_ARG(); snprintf( c->gw, sizeof c->gw, "%s", argv[ i ] ); }
         else if( !strcmp( a, "--hostname" ) )  { NEED_ARG(); snprintf( c->hostname, sizeof c->hostname, "%s", argv[ i ] ); }
         else if( !strcmp( a, "--mac" ) )       { NEED_ARG(); if( parse_mac( argv[ i ], c->mac ) != 0 ) { fprintf( stderr, "bad --mac\n" ); return -1; } }
+        else if( !strcmp( a, "--run-broker" ) ) { c->is_broker = 1; }
+        else if( !strcmp( a, "--broker" ) )
+        {
+            char * colon;
+            NEED_ARG();
+            colon = strrchr( argv[ i ], ':' );
+            if( colon != NULL ) { *colon = '\0'; c->broker_port = atoi( colon + 1 ); }
+            snprintf( c->broker_ip, sizeof c->broker_ip, "%s", argv[ i ] );
+        }
         else if( !strcmp( a, "--ping" ) )
         {
             NEED_ARG();

@@ -63,12 +63,39 @@ scripts/run-pair.sh 3
 # ping: 3 sent, 3 received, 0% loss
 ```
 
+### MQTT
+
+The device publishes JSON telemetry on `dev/<id>/telemetry`, subscribes to
+`dev/<id>/cmd`, and replies on `dev/<id>/resp`. Commands:
+
+| command | effect |
+|---------|--------|
+| `ping` | replies `pong` |
+| `status` | replies uptime / rate / pattern / led / publish count |
+| `rate <ms>` | set telemetry interval (10..60000) |
+| `pattern <ramp\|sine\|random\|const>` | choose the test pattern |
+| `led <on\|off>` | toggle the (stubbed) LED, reflected in telemetry |
+| `reboot` | acknowledged (no-op in the simulator) |
+
+For a self-contained demo (no external broker), one instance runs a built-in
+minimal **test broker** (`--run-broker`) that drives a command sequence:
+
+```sh
+scripts/run-mqtt.sh
+# test-broker: <- [dev/dev01/telemetry] {"seq":6,"val":183,"pattern":"sine","led":0}
+# test-broker: -> cmd "led on"
+# test-broker: <- [dev/dev01/resp] led=on
+```
+
+To point the device at a real broker instead: `--broker ADDR[:PORT]` (default
+`10.0.0.1:1883`). In the qeneth lab the broker is mosquitto on an Infix node.
+
 ## Prerequisites
 
 | Tool | Needed for | Status on first setup |
 |------|------------|-----------------------|
 | `gcc`, `make`, `git` | building this tree | required now |
-| `mosquitto` + clients | MQTT broker & test (`mosquitto_pub/sub`) | from M3 |
+| `mosquitto` + clients | *optional* real-broker test (built-in fixture needs none) | optional |
 | `qeneth`, `mustache`, graphviz (`gvpr`,`dot`) | running the topology | from M4 |
 
 Install on Debian/Ubuntu (later milestones):
@@ -83,7 +110,10 @@ port/lwip/qeneth_netif.c   custom lwIP netif over a host UDP socket
 src/main.c                 entry: parse args, start scheduler
 src/net.c                  config + lwIP/interface bring-up
 src/ping.c                 built-in ICMP echo diagnostic
-scripts/run-pair.sh        two-instance back-to-back self-test
+src/mqtt_app.c             MQTT client: telemetry + command handling
+src/test_broker.c          minimal MQTT broker test fixture (--run-broker)
+scripts/run-pair.sh        two-instance back-to-back ping self-test
+scripts/run-mqtt.sh        device + test-broker MQTT self-test
 lib/FreeRTOS-Kernel        submodule, pinned V11.3.0
 lib/lwip                   submodule, pinned STABLE-2_2_1_RELEASE (incl. contrib)
 Makefile                   gcc + make build
@@ -93,7 +123,7 @@ Makefile                   gcc + make build
 
 - [x] **M1** — runnable FreeRTOS skeleton (POSIX port, scheduler + tasks).
 - [x] **M2** — lwIP up on a custom qeneth UDP-socket netif; ICMP ping both ways.
-- [ ] **M3** — MQTT: publish test patterns; commands `ping/status/rate/pattern/led/reboot`.
+- [x] **M3** — MQTT: publish test patterns; commands `ping/status/rate/pattern/led/reboot`.
 - [ ] **M4** — qeneth node template + topology; end-to-end with Infix + mosquitto.
 
 ### MQTT scheme (planned)

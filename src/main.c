@@ -13,12 +13,26 @@
 #include "task.h"
 
 #include "net.h"
+#include "mqtt_app.h"
+#include "test_broker.h"
 
 static struct app_cfg g_cfg;
 
 static void app_task( void * arg )
 {
-    net_start( ( const struct app_cfg * ) arg );
+    const struct app_cfg * cfg = arg;
+
+    net_start( cfg );
+
+    if( cfg->is_broker )
+    {
+        test_broker_start( cfg );
+    }
+    else
+    {
+        mqtt_app_start( cfg );
+    }
+
     vTaskDelete( NULL );
 }
 

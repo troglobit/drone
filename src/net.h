@@ -14,7 +14,11 @@ struct app_cfg
     char    netmask[ 16 ];
     char    gw[ 16 ];
     uint8_t mac[ 6 ];
-    char    hostname[ 32 ];
+    char    hostname[ 32 ];   /* also used as the MQTT client/device id     */
+
+    char    broker_ip[ 16 ];  /* MQTT broker address                        */
+    int     broker_port;
+    int     is_broker;        /* run the built-in test broker fixture       */
 
     int     do_ping;         /* run the built-in pinger after bring-up    */
     char    ping_target[ 16 ];
