@@ -36,7 +36,9 @@
 #define configUSE_QUEUE_SETS                    0
 #define configQUEUE_REGISTRY_SIZE               16
 #define configUSE_NEWLIB_REENTRANT              0
-#define configENABLE_BACKWARD_COMPATIBILITY     0
+/* The bundled lwIP FreeRTOS port (contrib) uses the legacy portTICK_RATE_MS
+ * name, which only exists when backward compatibility is enabled. */
+#define configENABLE_BACKWARD_COMPATIBILITY     1
 #define configNUM_THREAD_LOCAL_STORAGE_POINTERS 0
 #define configSTACK_DEPTH_TYPE                  size_t
 
