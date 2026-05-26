@@ -1,0 +1,13 @@
+# Build output
+/build/
+*.o
+*.a
+*.axf
+
+# Editor / OS cruft
+*~
+.*.swp
+.DS_Store
+
+# Claude Code local settings
+.claude/settings.local.json
