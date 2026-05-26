@@ -72,7 +72,7 @@ OBJS = $(addprefix $(BUILD)/obj/,$(notdir $(SRCS:.c=.o)))
 vpath %.c $(sort $(dir $(SRCS)))
 
 # --- Rules -------------------------------------------------------------------
-.PHONY: all run clean
+.PHONY: all run test clean
 all: $(BIN)
 
 $(BIN): $(OBJS) | $(BUILD)
@@ -89,6 +89,14 @@ $(BUILD) $(BUILD)/obj:
 
 run: $(BIN)
 	./$(BIN)
+
+# Dependency-free self-tests: two back-to-back drone processes over a local
+# UDP-socket link (no broker, no root, no qeneth).
+test: $(BIN)
+	@echo "== ping self-test =="
+	@utils/run-pair.sh 3
+	@echo "== mqtt self-test =="
+	@utils/run-mqtt.sh 12
 
 clean:
 	$(RM) -r $(BUILD)
