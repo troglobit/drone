@@ -1,26 +1,14 @@
 # drone: a FreeRTOS + lwIP MQTT end-device
 
 A small FreeRTOS networking end-device that runs as a node in a [qeneth][1]
-virtual-network lab alongside [Infix][2] OS instances. It speaks MQTT: it
-publishes test patterns and responds to a handful of commands.
+virtual-network lab alongside [Infix][2] OS instances.  It speaks MQTT:
+publishing test patterns and responds to a handful of commands.
 
-This repository is the functional and protocol test target. It builds with
-plain `gcc` and `make`, and runs as an ordinary x86_64 Linux process on the
-FreeRTOS-Kernel **POSIX/Linux simulator port** with **lwIP**. Keeping the whole
-lab x86_64 means it gets the same KVM acceleration as the Infix nodes, while
-still running the actual application and lwIP code.
-
-> The eventual hardware target is a **Cortex-M7 (NXP S32K3)**, but that is a
-> much later phase and is not modelled here. This rig checks communication and
-> protocol behaviour, not the silicon.
-
-## How it plugs into qeneth
-
-qeneth wires QEMU instances together with `-netdev socket,udp=…` links (one raw
-Ethernet frame per UDP datagram), and a node's launcher can be anything. So
-`drone` joins a topology as a plain process: a custom lwIP network interface
-opens the UDP socket pair qeneth assigns and moves L2 frames over it. It needs
-no ARM emulation, no extra VM, and no TAP or root. See [doc/qeneth.md][3].
+qeneth wires QEMU instances together with `-netdev socket,udp=…` links (one
+raw Ethernet frame per UDP datagram), and a node's launcher can be anything.
+So `drone` joins a topology as a plain process: a custom lwIP network
+interface opens the UDP socket pair qeneth assigns and moves L2 frames over
+it.  For details, see [doc/qeneth.md][3].
 
 ```
    drone (this repo)                  broker node (Infix VM)
@@ -31,13 +19,13 @@ no ARM emulation, no extra VM, and no TAP or root. See [doc/qeneth.md][3].
   └────────────────────────────┘     └────────────────────────┘
 ```
 
-## Build & run
+## Build & Run
 
 ```sh
 git clone --recurse-submodules <this-repo>   # or: git submodule update --init
 make
 ./build/drone --help
-make test          # run the dependency-free self-tests (ping + MQTT)
+make test                                    # run the self-tests (ping + MQTT)
 ```
 
 The device attaches to one UDP-socket link (mirroring QEMU's
@@ -52,8 +40,8 @@ The device attaches to one UDP-socket link (mirroring QEMU's
 --ping ADDR [COUNT]     send ICMP echo after bring-up (built-in diagnostic)
 ```
 
-The device answers ICMP echo on its own, so any peer can `ping` it. For a check
-without qeneth, run two instances back to back:
+The device answers ICMP echo on its own, so any peer can `ping` it.  For a
+check without qeneth, run two instances back to back:
 
 ```sh
 utils/run-pair.sh 3
@@ -88,8 +76,8 @@ utils/run-mqtt.sh
 ```
 
 To point the device at a real broker instead, use `--broker ADDR[:PORT]`
-(default `10.0.0.1:1883`). In the qeneth lab the broker is mosquitto on an
-Infix node.
+(default `10.0.0.1:1883`).  In the qeneth lab the broker is mosquitto on
+an Infix node.
 
 ## Layout
 
