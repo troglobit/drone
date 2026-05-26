@@ -1,5 +1,5 @@
 /*
- * frtos-dev - FreeRTOS + lwIP MQTT end-device for the qeneth test lab.
+ * drone - FreeRTOS + lwIP MQTT end-device for the qeneth test lab.
  *
  * The POSIX-simulator build runs as a native x86_64 process and attaches to a
  * qeneth topology over a UDP-socket link (see port/lwip/qeneth_netif.c).
@@ -28,7 +28,7 @@ static void app_task( void * arg )
     {
         test_broker_start( cfg );
     }
-    else
+    else if( !cfg->no_mqtt )
     {
         mqtt_app_start( cfg );
     }
@@ -48,20 +48,20 @@ int main( int argc, char ** argv )
         return EXIT_FAILURE;
     }
 
-    printf( "frtos-dev: FreeRTOS %s + lwIP, POSIX simulator\n",
+    printf( "drone: FreeRTOS %s + lwIP, POSIX simulator\n",
             tskKERNEL_VERSION_NUMBER );
 
     if( xTaskCreate( app_task, "app", configMINIMAL_STACK_SIZE * 4, &g_cfg,
                      tskIDLE_PRIORITY + 2, NULL ) != pdPASS )
     {
-        fprintf( stderr, "frtos-dev: failed to create app task\n" );
+        fprintf( stderr, "drone: failed to create app task\n" );
         return EXIT_FAILURE;
     }
 
     vTaskStartScheduler();
 
     /* vTaskStartScheduler() only returns on insufficient heap. */
-    fprintf( stderr, "frtos-dev: scheduler returned - out of heap?\n" );
+    fprintf( stderr, "drone: scheduler returned - out of heap?\n" );
     return EXIT_FAILURE;
 }
 
@@ -70,13 +70,13 @@ int main( int argc, char ** argv )
 
 void vApplicationMallocFailedHook( void )
 {
-    fprintf( stderr, "frtos-dev: pvPortMalloc() failed - heap exhausted\n" );
+    fprintf( stderr, "drone: pvPortMalloc() failed - heap exhausted\n" );
     abort();
 }
 
 void vAssertCalled( const char * pcFile, int iLine )
 {
-    fprintf( stderr, "frtos-dev: assertion failed at %s:%d\n", pcFile, iLine );
+    fprintf( stderr, "drone: assertion failed at %s:%d\n", pcFile, iLine );
     fflush( stderr );
     abort();
 }

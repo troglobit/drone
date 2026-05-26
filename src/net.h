@@ -1,5 +1,5 @@
 /*
- * Application/network configuration and bring-up for frtos-dev.
+ * Application/network configuration and bring-up for drone.
  */
 #ifndef NET_H
 #define NET_H
@@ -19,6 +19,7 @@ struct app_cfg
     char    broker_ip[ 16 ];  /* MQTT broker address                        */
     int     broker_port;
     int     is_broker;        /* run the built-in test broker fixture       */
+    int     no_mqtt;          /* skip the MQTT client (diagnostics only)    */
 
     int     do_ping;         /* run the built-in pinger after bring-up    */
     char    ping_target[ 16 ];

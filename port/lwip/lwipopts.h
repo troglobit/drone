@@ -1,5 +1,5 @@
 /*
- * lwIP options for the frtos-dev simulator build.
+ * lwIP options for the drone simulator build.
  *
  * Model: NO_SYS=0 with a tcpip thread, IPv4 only, raw/UDP/TCP enabled.
  * App code (pinger, MQTT) uses the raw API bracketed by LOCK_TCPIP_CORE()/

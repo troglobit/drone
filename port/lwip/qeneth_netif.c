@@ -120,7 +120,7 @@ static err_t qn_netif_init( struct netif * netif )
     netif->flags = NETIF_FLAG_BROADCAST | NETIF_FLAG_ETHARP |
                    NETIF_FLAG_ETHERNET | NETIF_FLAG_LINK_UP;
 #if LWIP_NETIF_HOSTNAME
-    netif->hostname = "frtos-dev";
+    netif->hostname = "drone";
 #endif
     return ERR_OK;
 }

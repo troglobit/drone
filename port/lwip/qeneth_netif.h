@@ -2,7 +2,7 @@
  * qeneth_netif - an lwIP Ethernet network interface that rides on a host UDP
  * socket using the same framing as QEMU's "-netdev socket,udp=..." links
  * (one raw Ethernet frame per UDP datagram, no length prefix).  This is how
- * frtos-dev attaches to a qeneth topology without being a QEMU instance.
+ * drone attaches to a qeneth topology without being a QEMU instance.
  */
 #ifndef QENETH_NETIF_H
 #define QENETH_NETIF_H

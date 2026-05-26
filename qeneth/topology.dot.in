@@ -1,0 +1,33 @@
+/*
+ * Example qeneth topology wiring a drone end-device to a broker/gateway.
+ *
+ * Two shapes are shown; pick whichever suits your lab:
+ *
+ *  (A) Realistic: the broker is mosquitto running on an Infix node ("gw"),
+ *      which must be configured with IP 10.0.0.1 on its e0 interface.
+ *
+ *  (B) Self-contained: replace "gw" with a second drone running the built-in
+ *      test broker, i.e. add  qn_template="drone", qn_extra="--run-broker",
+ *      qn_ip="10.0.0.1"  to that node (no Infix image or mosquitto needed).
+ *
+ * Generate & run:  qeneth generate && qeneth start && qeneth console drone
+ */
+graph "drone-lab" {
+	node [shape=record];
+
+	/* Default template for the "real" nodes in your lab. */
+	qn_template="infix-x86_64";
+
+	/* Broker / gateway - configure 10.0.0.1 + mosquitto here (shape A). */
+	gw    [label="gw | { <e0> e0 }",
+	       qn_basemac="02:00:00:00:01:00"];
+
+	/* The drone end-device: native process, uses the "drone" template. */
+	drone [label="drone | { <e0> e0 }",
+	       qn_template="drone",
+	       qn_ip="10.0.0.2",
+	       qn_gw="10.0.0.1",
+	       qn_broker="10.0.0.1:1883"];
+
+	gw:e0 -- drone:e0;
+}

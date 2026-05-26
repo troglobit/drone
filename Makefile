@@ -1,11 +1,11 @@
-# frtos-dev - FreeRTOS + lwIP MQTT end-device for the qeneth test lab.
+# drone - FreeRTOS + lwIP MQTT end-device for the qeneth test lab.
 #
 # Native x86_64 build (gcc + make): FreeRTOS-Kernel POSIX port + lwIP, attached
 # to a qeneth UDP-socket link via a custom lwIP netif.
 
 CC      ?= gcc
 BUILD   ?= build
-BIN      = $(BUILD)/frtos-dev
+BIN      = $(BUILD)/drone
 
 KERNEL   = lib/FreeRTOS-Kernel
 PORT     = $(KERNEL)/portable/ThirdParty/GCC/Posix

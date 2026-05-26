@@ -1,0 +1,32 @@
+#!/bin/sh
+# qeneth node template for a "drone" end-device.
+#
+# A drone is NOT a QEMU instance - it is the native x86_64 "drone" binary
+# (FreeRTOS POSIX port + lwIP).  qeneth's generated node script just execs it.
+# Copy this file into your qeneth "templates/" directory and set
+# qn_template="drone" on the node in topology.dot.in.
+#
+# A drone has exactly ONE network interface (its single lwIP netif), so give it
+# a single link in the topology.  qeneth assigns that link a local UDP port
+# (qn_sport), the peer's UDP port (qn_dport) and a MAC (qn_mac); these map
+# directly onto drone's --localaddr / --udp / --mac.  qeneth uses "localhost"
+# for socket links, which the drone binary accepts.
+#
+# Optional node attributes (set on the node in topology.dot.in):
+#   qn_bin     path to the drone binary           (default: "drone" on $PATH)
+#   qn_ip      static IPv4 address                (default: 10.0.0.2)
+#   qn_gw      default gateway                    (default: 10.0.0.1)
+#   qn_broker  MQTT broker ADDR[:PORT]            (default: 10.0.0.1:1883)
+#   qn_extra   extra args, e.g. "--run-broker"    (default: none)
+
+exec {{#qn_bin}}{{qn_bin}}{{/qn_bin}}{{^qn_bin}}drone{{/qn_bin}} \
+{{#links}}
+	--localaddr localhost:{{qn_sport}} \
+	--udp localhost:{{qn_dport}} \
+	--mac {{qn_mac}} \
+{{/links}}
+	--hostname {{name}} \
+	--ip {{#qn_ip}}{{qn_ip}}{{/qn_ip}}{{^qn_ip}}10.0.0.2{{/qn_ip}} \
+	--gw {{#qn_gw}}{{qn_gw}}{{/qn_gw}}{{^qn_gw}}10.0.0.1{{/qn_gw}} \
+	--broker {{#qn_broker}}{{qn_broker}}{{/qn_broker}}{{^qn_broker}}10.0.0.1:1883{{/qn_broker}} \
+	{{#qn_extra}}{{qn_extra}}{{/qn_extra}}

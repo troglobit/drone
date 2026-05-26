@@ -1,5 +1,5 @@
 #!/bin/sh
-# Self-contained MQTT demo without an external broker: one frtos-dev acts as a
+# Self-contained MQTT demo without an external broker: one drone acts as a
 # minimal test broker (--run-broker), the other as the device.  They are joined
 # by a local UDP-socket link.  The device publishes telemetry; the broker
 # drives a command sequence and prints the device's responses.
@@ -7,7 +7,7 @@
 #   scripts/run-mqtt.sh [SECONDS]
 #
 set -e
-BIN=${BIN:-build/frtos-dev}
+BIN=${BIN:-build/drone}
 DURATION=${1:-16}
 
 [ -x "$BIN" ] || { echo "build first: make"; exit 1; }

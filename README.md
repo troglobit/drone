@@ -1,4 +1,4 @@
-# frtos-dev — FreeRTOS + lwIP MQTT end-device
+# drone — FreeRTOS + lwIP MQTT end-device
 
 A small FreeRTOS networking end-device used as a node in a
 [qeneth](https://github.com/wkz/qeneth) virtual-network lab alongside
@@ -19,17 +19,18 @@ exercising the real RTOS application logic and the real lwIP stack.
 
 qeneth wires QEMU instances together with `-netdev socket,udp=…` links — one
 raw Ethernet frame per UDP datagram — and a node's launcher "can be anything".
-So `frtos-dev` joins a topology as a plain process: a custom lwIP network
+So `drone` joins a topology as a plain process: a custom lwIP network
 interface opens the UDP socket pair qeneth assigns and tx/rx's L2 frames over
-it. No ARM emulation, no extra VM, no TAP/root required. *(Arrives in M2/M4.)*
+it. No ARM emulation, no extra VM, no TAP/root required. See
+[docs/qeneth-integration.md](docs/qeneth-integration.md).
 
 ```
-  ┌──────────────────────────────┐   UDP link  ┌───────────────────────────┐
-  │ frtos-dev (this repo)         │  :20000 ↔   │ infix-gw (x86_64, KVM)     │
-  │ native x86_64 process         ●─────────────● + mosquitto broker         │
-  │ FreeRTOS POSIX port + lwIP    │  :20001     │   … more Infix nodes …     │
-  │ + lwIP apps/mqtt              │             │                           │
-  └──────────────────────────────┘             └───────────────────────────┘
+  drone (this repo)                  broker node (Infix VM)
+  ┌────────────────────────────┐     ┌────────────────────────┐
+  │ FreeRTOS POSIX port + lwIP  │ L2  │ mosquitto              │
+  │ + lwIP apps/mqtt            │◀═══▶│                        │
+  │ custom UDP-socket netif     │ UDP │ … more Infix nodes …   │
+  └────────────────────────────┘     └────────────────────────┘
 ```
 
 ## Build & run
@@ -37,7 +38,7 @@ it. No ARM emulation, no extra VM, no TAP/root required. *(Arrives in M2/M4.)*
 ```sh
 git clone --recurse-submodules <this-repo>   # or: git submodule update --init
 make
-./build/frtos-dev --help
+./build/drone --help
 ```
 
 The device attaches to one UDP-socket link (mirroring QEMU's
@@ -48,7 +49,7 @@ The device attaches to one UDP-socket link (mirroring QEMU's
 --udp HOST:PORT         send frames to this peer    (default 127.0.0.1:20001)
 --ip / --netmask / --gw static IPv4 config          (default 10.0.0.2/24, gw .1)
 --mac XX:..             interface MAC               (default 02:00:00:00:00:02)
---hostname NAME         device id                   (default frtos-dev)
+--hostname NAME         device id                   (default drone)
 --ping ADDR [COUNT]     send ICMP echo after bring-up (built-in diagnostic)
 ```
 
@@ -96,10 +97,7 @@ To point the device at a real broker instead: `--broker ADDR[:PORT]` (default
 |------|------------|-----------------------|
 | `gcc`, `make`, `git` | building this tree | required now |
 | `mosquitto` + clients | *optional* real-broker test (built-in fixture needs none) | optional |
-| `qeneth`, `mustache`, graphviz (`gvpr`,`dot`) | running the topology | from M4 |
-
-Install on Debian/Ubuntu (later milestones):
-`sudo apt install mosquitto mosquitto-clients graphviz ruby-mustache`
+| `qeneth`, `mustache`, graphviz | running in a qeneth lab — see [docs/qeneth-integration.md](docs/qeneth-integration.md) | optional |
 
 ## Layout
 
@@ -114,6 +112,9 @@ src/mqtt_app.c             MQTT client: telemetry + command handling
 src/test_broker.c          minimal MQTT broker test fixture (--run-broker)
 scripts/run-pair.sh        two-instance back-to-back ping self-test
 scripts/run-mqtt.sh        device + test-broker MQTT self-test
+qeneth/templates/drone.mustache  qeneth node launcher template
+qeneth/topology.dot.in     example qeneth topology
+docs/qeneth-integration.md how to run drone as a qeneth node
 lib/FreeRTOS-Kernel        submodule, pinned V11.3.0
 lib/lwip                   submodule, pinned STABLE-2_2_1_RELEASE (incl. contrib)
 Makefile                   gcc + make build
@@ -124,10 +125,6 @@ Makefile                   gcc + make build
 - [x] **M1** — runnable FreeRTOS skeleton (POSIX port, scheduler + tasks).
 - [x] **M2** — lwIP up on a custom qeneth UDP-socket netif; ICMP ping both ways.
 - [x] **M3** — MQTT: publish test patterns; commands `ping/status/rate/pattern/led/reboot`.
-- [ ] **M4** — qeneth node template + topology; end-to-end with Infix + mosquitto.
-
-### MQTT scheme (planned)
-
-- publishes telemetry/test patterns on `dev/<id>/telemetry`
-- subscribes to `dev/<id>/cmd`, replies on `dev/<id>/resp`
-- commands: `ping`, `status`, `rate <ms>`, `pattern <ramp|sine|random|const>`, `led <on|off>`, `reboot`
+- [x] **M4 artifacts** — qeneth node template + example topology + integration
+  guide ([docs/qeneth-integration.md](docs/qeneth-integration.md)). The live
+  multi-node lab is wired up in the **Dragnet** repo.

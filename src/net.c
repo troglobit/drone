@@ -30,7 +30,7 @@ void app_cfg_defaults( struct app_cfg * c )
     /* Locally administered unicast MAC (02:..). */
     c->mac[ 0 ] = 0x02; c->mac[ 1 ] = 0x00; c->mac[ 2 ] = 0x00;
     c->mac[ 3 ] = 0x00; c->mac[ 4 ] = 0x00; c->mac[ 5 ] = 0x02;
-    strcpy( c->hostname, "frtos-dev" );
+    strcpy( c->hostname, "drone" );
     strcpy( c->broker_ip, "10.0.0.1" );
     c->broker_port = 1883;
     c->ping_count = 4;
@@ -66,9 +66,10 @@ static void usage( const char * argv0 )
              "  --netmask ADDR          (default 255.255.255.0)\n"
              "  --gw ADDR               default gateway (default 10.0.0.1)\n"
              "  --mac XX:XX:XX:XX:XX:XX  interface MAC (default 02:00:00:00:00:02)\n"
-             "  --hostname NAME         device hostname/id (default frtos-dev)\n"
+             "  --hostname NAME         device hostname/id (default drone)\n"
              "  --broker ADDR[:PORT]    MQTT broker (default 10.0.0.1:1883)\n"
              "  --run-broker            act as the built-in test broker instead\n"
+             "  --no-mqtt               skip the MQTT client (diagnostics only)\n"
              "  --ping ADDR [COUNT]     send ICMP echo requests after bring-up\n",
              argv0 );
 }
@@ -88,6 +89,7 @@ int app_cfg_parse( struct app_cfg * c, int argc, char ** argv )
         else if( !strcmp( a, "--hostname" ) )  { NEED_ARG(); snprintf( c->hostname, sizeof c->hostname, "%s", argv[ i ] ); }
         else if( !strcmp( a, "--mac" ) )       { NEED_ARG(); if( parse_mac( argv[ i ], c->mac ) != 0 ) { fprintf( stderr, "bad --mac\n" ); return -1; } }
         else if( !strcmp( a, "--run-broker" ) ) { c->is_broker = 1; }
+        else if( !strcmp( a, "--no-mqtt" ) )    { c->no_mqtt = 1; }
         else if( !strcmp( a, "--broker" ) )
         {
             char * colon;
@@ -138,7 +140,21 @@ static int parse_hostport( const char * s, struct sockaddr_in * sa )
     memset( sa, 0, sizeof( *sa ) );
     sa->sin_family = AF_INET;
     sa->sin_port = htons( ( uint16_t ) port );
-    sa->sin_addr.s_addr = inet_addr( host[ 0 ] ? host : "127.0.0.1" );
+
+    /* qeneth links use "localhost"; accept it (and an empty host) as loopback.
+     * inet_addr() only understands dotted-decimal, so map the name here. */
+    if( ( host[ 0 ] == '\0' ) || ( strcmp( host, "localhost" ) == 0 ) )
+    {
+        sa->sin_addr.s_addr = htonl( INADDR_LOOPBACK );
+    }
+    else
+    {
+        sa->sin_addr.s_addr = inet_addr( host );
+        if( sa->sin_addr.s_addr == INADDR_NONE )
+        {
+            return -1;
+        }
+    }
     return 0;
 }
 
@@ -182,13 +198,13 @@ void net_start( const struct app_cfg * c )
         !ip4addr_aton( c->netmask, &mask ) ||
         !ip4addr_aton( c->gw, &gw ) )
     {
-        fprintf( stderr, "frtos-dev: bad IP configuration\n" );
+        fprintf( stderr, "drone: bad IP configuration\n" );
         return;
     }
 
     if( parse_hostport( c->peeraddr, &peer ) != 0 )
     {
-        fprintf( stderr, "frtos-dev: bad --udp '%s'\n", c->peeraddr );
+        fprintf( stderr, "drone: bad --udp '%s'\n", c->peeraddr );
         return;
     }
 
@@ -198,7 +214,7 @@ void net_start( const struct app_cfg * c )
         return;
     }
 
-    printf( "frtos-dev: link bind=%s peer=%s mac=%02x:%02x:%02x:%02x:%02x:%02x\n",
+    printf( "drone: link bind=%s peer=%s mac=%02x:%02x:%02x:%02x:%02x:%02x\n",
             c->localaddr, c->peeraddr,
             c->mac[ 0 ], c->mac[ 1 ], c->mac[ 2 ],
             c->mac[ 3 ], c->mac[ 4 ], c->mac[ 5 ] );
@@ -210,11 +226,11 @@ void net_start( const struct app_cfg * c )
     if( qeneth_netif_add( &s_netif, &ip, &mask, &gw, c->mac,
                           fd, peer.sin_addr.s_addr, peer.sin_port ) != ERR_OK )
     {
-        fprintf( stderr, "frtos-dev: failed to add interface\n" );
+        fprintf( stderr, "drone: failed to add interface\n" );
         return;
     }
 
-    printf( "frtos-dev: interface up, ip=%s/%s gw=%s\n",
+    printf( "drone: interface up, ip=%s/%s gw=%s\n",
             c->ip, c->netmask, c->gw );
 
     if( c->do_ping )
@@ -227,7 +243,7 @@ void net_start( const struct app_cfg * c )
         }
         else
         {
-            fprintf( stderr, "frtos-dev: bad --ping target '%s'\n", c->ping_target );
+            fprintf( stderr, "drone: bad --ping target '%s'\n", c->ping_target );
         }
     }
 }
