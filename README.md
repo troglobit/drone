@@ -1,6 +1,6 @@
-# drone: a FreeRTOS + lwIP MQTT end-device
+# drone: a simple FreeRTOS + MQTT end-device
 
-A small FreeRTOS networking end-device that runs as a node in a [qeneth][1]
+A small FreeRTOS networking end-device for running as a node in a [qeneth][1]
 virtual-network lab alongside [Infix][2] OS instances.  It speaks MQTT:
 publishing test patterns and responds to a handful of commands.
 
@@ -102,7 +102,7 @@ an Infix node.
 | src/test_broker.c               | minimal MQTT broker test fixture (--run-broker)        |
 | test/                           | self-test scripts (one per slice); test.mk is included |
 | utils/drone.sh                  | shared shell helpers (drone_require_bin, drone_run_bg) |
-| Makefile / .clang-format        | gcc + make build, plus `make format` for Linux KNF     |
+| Makefile / .clang-format        | gcc + make build, plus `make fmt` for Linux KNF        |
 
 [1]: https://github.com/wkz/qeneth
 [2]: https://github.com/kernelkit/infix

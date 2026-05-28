@@ -2,7 +2,7 @@
 #
 # The FreeRTOS kernel, the lwIP stack, and the configuration headers in
 # include/ and port/lwip/ keep their upstream / tabular style; only the files
-# listed in Makefile's FORMAT_FILES are reformatted.  Run `make format`.
+# listed in Makefile's FMT_FILES are reformatted.  Run `make fmt`.
 #
 ---
 BasedOnStyle:          LLVM

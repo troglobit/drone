@@ -1,89 +1,35 @@
-# drone - FreeRTOS + lwIP MQTT end-device for the qeneth test lab.
-#
-# Native x86_64 build (gcc + make): FreeRTOS-Kernel POSIX port + lwIP, attached
-# to a qeneth UDP-socket link via a custom lwIP netif.
+# Native x86_64 build (gcc + make).  FreeRTOS-Kernel and lwIP each build into
+# a static library; the app + port glue is linked against them.  Source
+# lists, include dirs, and per-component .a rules live in subdirectory .mk
+# fragments included below.
 
-CC      ?= gcc
-BUILD   ?= build
-BIN      = $(BUILD)/drone
+CC       ?= gcc
+AR       ?= ar
+BUILD    ?= build
+BIN       = $(BUILD)/drone
+WARN      = -Wall -Wextra
+CFLAGS   ?= -O0 -g
+INCLUDES  = $(APP_INCS) $(PORT_INCS) $(FREERTOS_INCS) $(LWIP_INCS)
+SRCS      = $(APP_SRCS) $(PORT_SRCS) $(FREERTOS_SRCS) $(LWIP_SRCS)
+LIBS      = $(BUILD)/liblwip.a $(BUILD)/libfreertos.a
+FMT_FILES = $(filter-out port/lwip/lwipopts.h, \
+            $(wildcard src/*.[ch] port/*/*.[ch]))
 
-KERNEL   = lib/FreeRTOS-Kernel
-PORT     = $(KERNEL)/portable/ThirdParty/GCC/Posix
-LWIPDIR  = lib/lwip/src
-LWIPCONTRIB = lib/lwip/contrib
+override CFLAGS  += $(WARN) -pthread -MMD -MP $(INCLUDES)
+override LDFLAGS += -pthread -lm
 
-# --- FreeRTOS kernel ---------------------------------------------------------
-KERNEL_SRCS = \
-	$(KERNEL)/tasks.c \
-	$(KERNEL)/queue.c \
-	$(KERNEL)/list.c \
-	$(KERNEL)/timers.c \
-	$(KERNEL)/event_groups.c \
-	$(KERNEL)/stream_buffer.c \
-	$(KERNEL)/portable/MemMang/heap_4.c \
-	$(PORT)/port.c \
-	$(PORT)/utils/wait_for_event.c
+include lib/freertos.mk
+include lib/lwip.mk
+include port/port.mk
+include src/app.mk
+include test/test.mk
 
-# --- lwIP (IPv4 core + ethernet + tcpip thread) ------------------------------
-LWIP_CORE = $(addprefix $(LWIPDIR)/core/, \
-	init.c def.c dns.c inet_chksum.c ip.c mem.c memp.c netif.c pbuf.c raw.c \
-	stats.c sys.c altcp.c altcp_alloc.c altcp_tcp.c tcp.c tcp_in.c tcp_out.c \
-	timeouts.c udp.c)
-LWIP_CORE4 = $(addprefix $(LWIPDIR)/core/ipv4/, \
-	acd.c autoip.c dhcp.c etharp.c icmp.c igmp.c ip4_frag.c ip4.c ip4_addr.c)
-LWIP_CORE6 = $(addprefix $(LWIPDIR)/core/ipv6/, \
-	dhcp6.c ethip6.c icmp6.c inet6.c ip6.c ip6_addr.c ip6_frag.c mld6.c nd6.c)
-LWIP_SRCS = \
-	$(LWIP_CORE) \
-	$(LWIP_CORE4) \
-	$(LWIP_CORE6) \
-	$(LWIPDIR)/netif/ethernet.c \
-	$(LWIPDIR)/api/tcpip.c \
-	$(LWIPDIR)/api/err.c \
-	$(LWIPDIR)/apps/mqtt/mqtt.c \
-	$(LWIPDIR)/apps/mdns/mdns.c \
-	$(LWIPDIR)/apps/mdns/mdns_domain.c \
-	$(LWIPDIR)/apps/mdns/mdns_out.c \
-	$(LWIPCONTRIB)/ports/freertos/sys_arch.c
-
-# --- Application + port glue -------------------------------------------------
-APP_SRCS = \
-	src/main.c \
-	src/net.c \
-	src/ping.c \
-	src/mqtt_app.c \
-	src/mdns_app.c \
-	src/test_broker.c \
-	port/lwip/qeneth_netif.c
-
-SRCS = $(APP_SRCS) $(KERNEL_SRCS) $(LWIP_SRCS)
-
-INCS = \
-	-Iinclude \
-	-Iport/lwip \
-	-I$(KERNEL)/include \
-	-I$(PORT) \
-	-I$(PORT)/utils \
-	-I$(LWIPDIR)/include \
-	-I$(LWIPCONTRIB)/ports/freertos/include
-
-# --- Flags -------------------------------------------------------------------
-WARN     = -Wall -Wextra
-CFLAGS  ?= -O0 -g
-CFLAGS  += $(WARN) -pthread -MMD -MP $(INCS)
-LDFLAGS += -pthread -lm
-
-# Flat objects keyed by basename (all sources have unique basenames); vpath
-# locates each source in its directory.
-OBJS = $(addprefix $(BUILD)/obj/,$(notdir $(SRCS:.c=.o)))
 vpath %.c $(sort $(dir $(SRCS)))
 
-# --- Rules -------------------------------------------------------------------
-.PHONY: all run format clean
 all: $(BIN)
 
-$(BIN): $(OBJS) | $(BUILD)
-	$(CC) $(OBJS) $(LDFLAGS) -o $@
+$(BIN): $(APP_OBJS) $(PORT_OBJS) $(LIBS) | $(BUILD)
+	$(CC) $(APP_OBJS) $(PORT_OBJS) $(LIBS) $(LDFLAGS) -o $@
 	@echo "built $@"
 
 $(BUILD)/obj/%.o: %.c | $(BUILD)/obj
@@ -92,31 +38,20 @@ $(BUILD)/obj/%.o: %.c | $(BUILD)/obj
 $(BUILD) $(BUILD)/obj:
 	@mkdir -p $@
 
--include $(OBJS:.o=.d)
-
 run: $(BIN)
 	./$(BIN)
 
-# Self-tests live in their own makefile so they can grow without bloating
-# this one.  Defines the `test` target.
-include test/test.mk
-
-# Reformat the app and port code to Linux KNF (see .clang-format).  Excludes
-# config tables (FreeRTOSConfig.h, lwipopts.h, arch/cc.h) whose manual
-# alignment a formatter would mangle, and the third-party submodules under
-# lib/, which keep their upstream style.
-FORMAT_FILES = \
-	src/main.c \
-	src/net.c src/net.h \
-	src/ping.c src/ping.h \
-	src/mqtt_app.c src/mqtt_app.h \
-	src/mdns_app.c src/mdns_app.h \
-	src/test_broker.c src/test_broker.h \
-	port/lwip/qeneth_netif.c port/lwip/qeneth_netif.h
-
-format:
+fmt:
 	@command -v clang-format >/dev/null || { echo "install clang-format"; exit 1; }
-	clang-format -i $(FORMAT_FILES)
+	clang-format -i $(FMT_FILES)
 
 clean:
 	$(RM) -r $(BUILD)
+
+distclean: clean
+	$(RM) tags TAGS GTAGS GRTAGS GPATH GSYMS
+	$(RM) core core.* vgcore.*
+	find . -name '*~' -not -path './lib/*' -delete
+
+.DEFAULT_GOAL := all
+.PHONY: all run fmt clean distclean
