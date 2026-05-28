@@ -128,6 +128,10 @@ static err_t qn_netif_init( struct netif * netif )
      * skipping autoip_network_changed_link_up(), the link callback, and the
      * LWIP_NSC_LINK_CHANGED ext event.  Let qeneth_netif_add() raise it. */
     netif->flags = NETIF_FLAG_BROADCAST | NETIF_FLAG_ETHARP | NETIF_FLAG_ETHERNET;
+#if LWIP_IGMP
+    /* Required for v4 multicast joins (mDNS joins 224.0.0.251). */
+    netif->flags |= NETIF_FLAG_IGMP;
+#endif
 #if LWIP_IPV6 && LWIP_IPV6_MLD
     netif->flags |= NETIF_FLAG_MLD6;
 #endif

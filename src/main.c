@@ -13,6 +13,7 @@
 #include "task.h"
 
 #include "net.h"
+#include "mdns_app.h"
 #include "mqtt_app.h"
 #include "test_broker.h"
 
@@ -23,6 +24,7 @@ static void app_task( void * arg )
     const struct app_cfg * cfg = arg;
 
     net_start( cfg );
+    mdns_app_start( cfg );
 
     if( cfg->is_broker )
     {

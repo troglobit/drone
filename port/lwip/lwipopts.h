@@ -67,6 +67,9 @@
 #define LWIP_TCP                        1      /* used by MQTT */
 #define LWIP_ALTCP                      1      /* apps/mqtt uses the altcp API */
 #define LWIP_ALTCP_TLS                  0
+#define LWIP_MDNS_RESPONDER             1      /* announce <hostname>.local */
+#define MDNS_MAX_SERVICES               1
+#define LWIP_NUM_NETIF_CLIENT_DATA      1      /* required by apps/mdns */
 #define LWIP_DHCP                       0
 #define LWIP_AUTOIP                     1      /* RFC 3927 v4 link-local */
 #define LWIP_DNS                        0

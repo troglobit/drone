@@ -41,6 +41,9 @@ LWIP_SRCS = \
 	$(LWIPDIR)/api/tcpip.c \
 	$(LWIPDIR)/api/err.c \
 	$(LWIPDIR)/apps/mqtt/mqtt.c \
+	$(LWIPDIR)/apps/mdns/mdns.c \
+	$(LWIPDIR)/apps/mdns/mdns_domain.c \
+	$(LWIPDIR)/apps/mdns/mdns_out.c \
 	$(LWIPCONTRIB)/ports/freertos/sys_arch.c
 
 # --- Application + port glue -------------------------------------------------
@@ -49,6 +52,7 @@ APP_SRCS = \
 	src/net.c \
 	src/ping.c \
 	src/mqtt_app.c \
+	src/mdns_app.c \
 	src/test_broker.c \
 	port/lwip/qeneth_netif.c
 
@@ -100,6 +104,8 @@ test: $(BIN)
 	@utils/run-autoip.sh
 	@echo "== ipv6 self-test =="
 	@utils/run-ipv6.sh
+	@echo "== mdns self-test =="
+	@utils/run-mdns.sh
 	@echo "== ping self-test =="
 	@utils/run-pair.sh 3
 	@echo "== mqtt self-test =="

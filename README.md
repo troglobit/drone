@@ -41,8 +41,10 @@ The device attaches to one UDP-socket link (mirroring QEMU's
 ```
 
 Each interface also acquires an IPv6 link-local (`fe80::EUI64`) on bring-up,
-derived from the MAC. The device answers ICMP echo on its own, so any peer
-can `ping` it.  For a check without qeneth, run two instances back to back:
+derived from the MAC, and the device announces itself via mDNS as
+`<hostname>.local` plus a `_drone._tcp` service so a CNC can browse for it.
+The device answers ICMP echo on its own, so any peer can `ping` it.  For a
+check without qeneth, run two instances back to back:
 
 ```sh
 utils/run-pair.sh 3
@@ -57,7 +59,7 @@ utils/run-pair.sh 3
 The device publishes JSON telemetry on `dev/<id>/telemetry`, subscribes to
 `dev/<id>/cmd`, and replies on `dev/<id>/resp`. Commands:
 
-| command                               | effect                                                |
+| command                               | description                                           |
 |---------------------------------------|-------------------------------------------------------|
 | `ping`                                | replies `pong`                                        |
 | `status`                              | replies uptime / rate / pattern / led / publish count |

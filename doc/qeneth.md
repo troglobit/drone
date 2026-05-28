@@ -72,6 +72,16 @@ network; no host TAP or bridging is involved. Two common setups:
   `qn_template="drone"`, `qn_extra="--run-broker"`, `qn_ip="10.0.0.1"`. It runs
   the built-in test broker and drives a command sequence.
 
+## Discovering drones
+
+Every drone announces itself on the qeneth L2 as `<hostname>.local` via
+mDNS, plus a `_drone._tcp` service carrying TXT records with the device id,
+firmware tag, and configured broker.  A CNC on any node of the same L2 can
+browse for drones (`avahi-browse _drone._tcp`) and resolve their names
+without out-of-band IP knowledge.  The MAC-derived default hostname makes
+fresh drones unique by construction; a `--hostname north-pump` overrides it
+with a meaningful role label.
+
 ## Without qeneth
 
 For quick local checks you don't need qeneth at all. The `utils/` scripts wire
