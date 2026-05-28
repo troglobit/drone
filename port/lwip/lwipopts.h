@@ -60,8 +60,9 @@
 #define LWIP_ALTCP                      1      /* apps/mqtt uses the altcp API */
 #define LWIP_ALTCP_TLS                  0
 #define LWIP_DHCP                       0
+#define LWIP_AUTOIP                     1      /* RFC 3927 v4 link-local */
 #define LWIP_DNS                        0
-#define LWIP_IGMP                       0
+#define LWIP_IGMP                       1      /* v4 multicast (mDNS later) */
 #define LWIP_NETIF_HOSTNAME             1
 
 /* === TCP sizing (for MQTT) ============================================ */
@@ -72,6 +73,7 @@
 /* === Netif ============================================================ */
 #define LWIP_NETIF_STATUS_CALLBACK      1
 #define LWIP_NETIF_LINK_CALLBACK        1
+#define LWIP_NETIF_EXT_STATUS_CALLBACK  1      /* IPv4 address-change events */
 #define LWIP_SINGLE_NETIF               1
 
 /* === Checksums in software (the qeneth UDP link offers no offload) ==== */

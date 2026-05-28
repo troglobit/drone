@@ -93,6 +93,8 @@ run: $(BIN)
 # Dependency-free self-tests: two back-to-back drone processes over a local
 # UDP-socket link (no broker, no root, no qeneth).
 test: $(BIN)
+	@echo "== autoip self-test =="
+	@utils/run-autoip.sh
 	@echo "== ping self-test =="
 	@utils/run-pair.sh 3
 	@echo "== mqtt self-test =="

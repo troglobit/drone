@@ -51,13 +51,14 @@ so the generated command line works unchanged.
 | attribute    | default          | purpose                                   |
 |--------------|------------------|-------------------------------------------|
 | `qn_bin`     | `drone` (PATH)   | path to the binary                        |
-| `qn_ip`      | `10.0.0.2`       | static IPv4 address                       |
-| `qn_gw`      | `10.0.0.1`       | default gateway                           |
+| `qn_ip`      | *(none, AutoIP)* | static IPv4 address; omit for AutoIP      |
+| `qn_gw`      | *(none, AutoIP)* | default gateway                           |
 | `qn_broker`  | `10.0.0.1:1883`  | MQTT broker address                       |
 | `qn_extra`   | *(none)*         | extra flags, e.g. `--run-broker`          |
 
-> `drone` uses a static IP (no DHCP yet). If your lab assigns addresses
-> differently, set `qn_ip`/`qn_gw` to match, or build with `LWIP_DHCP`.
+> If `qn_ip` is set, the drone uses that static address; otherwise it claims a
+> link-local 169.254/16 address via AutoIP (RFC 3927). DHCP is not built in
+> yet — enable `LWIP_DHCP` if you need it.
 
 ## Where the broker lives
 

@@ -14,8 +14,8 @@
 #
 # Optional node attributes (set on the node in topology.dot.in):
 #   qn_bin     path to the drone binary           (default: "drone" on $PATH)
-#   qn_ip      static IPv4 address                (default: 10.0.0.2)
-#   qn_gw      default gateway                    (default: 10.0.0.1)
+#   qn_ip      static IPv4 address                (default: none -> AutoIP)
+#   qn_gw      default gateway                    (default: none -> AutoIP)
 #   qn_broker  MQTT broker ADDR[:PORT]            (default: 10.0.0.1:1883)
 #   qn_extra   extra args, e.g. "--run-broker"    (default: none)
 
@@ -26,7 +26,11 @@ exec {{#qn_bin}}{{qn_bin}}{{/qn_bin}}{{^qn_bin}}drone{{/qn_bin}} \
 	--mac {{qn_mac}} \
 {{/links}}
 	--hostname {{name}} \
-	--ip {{#qn_ip}}{{qn_ip}}{{/qn_ip}}{{^qn_ip}}10.0.0.2{{/qn_ip}} \
-	--gw {{#qn_gw}}{{qn_gw}}{{/qn_gw}}{{^qn_gw}}10.0.0.1{{/qn_gw}} \
+{{#qn_ip}}
+	--ip {{qn_ip}} \
+{{/qn_ip}}
+{{#qn_gw}}
+	--gw {{qn_gw}} \
+{{/qn_gw}}
 	--broker {{#qn_broker}}{{qn_broker}}{{/qn_broker}}{{^qn_broker}}10.0.0.1:1883{{/qn_broker}} \
 	{{#qn_extra}}{{qn_extra}}{{/qn_extra}}

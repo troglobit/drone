@@ -28,6 +28,8 @@ struct app_cfg
 
 void app_cfg_defaults( struct app_cfg * c );
 int  app_cfg_parse( struct app_cfg * c, int argc, char ** argv ); /* 0 = ok */
+void app_cfg_finalize( struct app_cfg * c );  /* derive defaults that depend
+                                                 on other fields (hostname). */
 
 /* Initialise lwIP, bring up the interface, and start enabled services.
  * Must be called from a FreeRTOS task (after the scheduler is running). */

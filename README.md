@@ -34,9 +34,9 @@ The device attaches to one UDP-socket link (mirroring QEMU's
 ```
 --localaddr HOST:PORT   bind the link socket here   (default 127.0.0.1:20000)
 --udp HOST:PORT         send frames to this peer    (default 127.0.0.1:20001)
---ip / --netmask / --gw static IPv4 config          (default 10.0.0.2/24, gw .1)
+--ip / --netmask / --gw static IPv4 (omit --ip to claim a 169.254/16 via AutoIP)
 --mac XX:..             interface MAC               (default 02:00:00:00:00:02)
---hostname NAME         device id                   (default drone)
+--hostname NAME         device id / role            (default: drone-XXYYZZ from MAC)
 --ping ADDR [COUNT]     send ICMP echo after bring-up (built-in diagnostic)
 ```
 

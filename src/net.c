@@ -12,6 +12,7 @@
 #include "lwip/tcpip.h"
 #include "lwip/netif.h"
 #include "lwip/ip4_addr.h"
+#include "lwip/autoip.h"
 
 #include "net.h"
 #include "ping.h"
@@ -24,13 +25,14 @@ void app_cfg_defaults( struct app_cfg * c )
     memset( c, 0, sizeof( *c ) );
     strcpy( c->localaddr, "127.0.0.1:20000" );
     strcpy( c->peeraddr, "127.0.0.1:20001" );
-    strcpy( c->ip, "10.0.0.2" );
+    /* No --ip default: when omitted, the drone claims a 169.254/16 address
+     * via AutoIP (RFC 3927).  netmask/gw apply only when --ip is given. */
     strcpy( c->netmask, "255.255.255.0" );
     strcpy( c->gw, "10.0.0.1" );
-    /* Locally administered unicast MAC (02:..). */
+    /* Locally administered unicast MAC (02:..).  --hostname stays empty so
+     * app_cfg_finalize() can derive drone-XXYYZZ from the low MAC bytes. */
     c->mac[ 0 ] = 0x02; c->mac[ 1 ] = 0x00; c->mac[ 2 ] = 0x00;
     c->mac[ 3 ] = 0x00; c->mac[ 4 ] = 0x00; c->mac[ 5 ] = 0x02;
-    strcpy( c->hostname, "drone" );
     strcpy( c->broker_ip, "10.0.0.1" );
     c->broker_port = 1883;
     c->ping_count = 4;
@@ -62,11 +64,11 @@ static void usage( const char * argv0 )
              "(default 127.0.0.1:20000)\n"
              "  --udp HOST:PORT         send frames to this peer "
              "(default 127.0.0.1:20001)\n"
-             "  --ip ADDR               static IPv4 address (default 10.0.0.2)\n"
-             "  --netmask ADDR          (default 255.255.255.0)\n"
-             "  --gw ADDR               default gateway (default 10.0.0.1)\n"
+             "  --ip ADDR               static IPv4 address (omit -> AutoIP)\n"
+             "  --netmask ADDR          (default 255.255.255.0, used with --ip)\n"
+             "  --gw ADDR               default gateway (default 10.0.0.1, used with --ip)\n"
              "  --mac XX:XX:XX:XX:XX:XX  interface MAC (default 02:00:00:00:00:02)\n"
-             "  --hostname NAME         device hostname/id (default drone)\n"
+             "  --hostname NAME         device id / role (default: drone-XXYYZZ from MAC)\n"
              "  --broker ADDR[:PORT]    MQTT broker (default 10.0.0.1:1883)\n"
              "  --run-broker            act as the built-in test broker instead\n"
              "  --no-mqtt               skip the MQTT client (diagnostics only)\n"
@@ -115,6 +117,17 @@ int app_cfg_parse( struct app_cfg * c, int argc, char ** argv )
     }
 
     return 0;
+}
+
+void app_cfg_finalize( struct app_cfg * c )
+{
+    /* When --hostname wasn't given, derive a unique-by-MAC default so two
+     * unconfigured drones don't collide on the same name. */
+    if( c->hostname[ 0 ] == '\0' )
+    {
+        snprintf( c->hostname, sizeof c->hostname, "drone-%02x%02x%02x",
+                  c->mac[ 3 ], c->mac[ 4 ], c->mac[ 5 ] );
+    }
 }
 
 /* Split "host:port" (host optional, defaults to 127.0.0.1) into a sockaddr. */
@@ -188,15 +201,39 @@ static int open_link_socket( const char * localaddr )
     return fd;
 }
 
+/* lwIP fires this callback when the netif's IPv4 address becomes valid;
+ * with AutoIP, that's after the probe-and-claim cycle completes. */
+NETIF_DECLARE_EXT_CALLBACK( s_ext_cb )
+static void on_netif_ext( struct netif * nif, netif_nsc_reason_t reason,
+                          const netif_ext_callback_args_t * args )
+{
+    LWIP_UNUSED_ARG( args );
+    if( reason & ( LWIP_NSC_IPV4_ADDR_VALID | LWIP_NSC_IPV4_ADDRESS_CHANGED ) )
+    {
+        const ip4_addr_t * a = netif_ip4_addr( nif );
+        if( !ip4_addr_isany( a ) )
+        {
+            printf( "drone: ipv4 address: %s\n", ip4addr_ntoa( a ) );
+        }
+    }
+}
+
 void net_start( const struct app_cfg * c )
 {
     ip4_addr_t ip, mask, gw;
     struct sockaddr_in peer;
+    int autoip = ( c->ip[ 0 ] == '\0' );
     int fd;
 
-    if( !ip4addr_aton( c->ip, &ip ) ||
-        !ip4addr_aton( c->netmask, &mask ) ||
-        !ip4addr_aton( c->gw, &gw ) )
+    if( autoip )
+    {
+        ip4_addr_set_zero( &ip );
+        ip4_addr_set_zero( &mask );
+        ip4_addr_set_zero( &gw );
+    }
+    else if( !ip4addr_aton( c->ip, &ip ) ||
+             !ip4addr_aton( c->netmask, &mask ) ||
+             !ip4addr_aton( c->gw, &gw ) )
     {
         fprintf( stderr, "drone: bad IP configuration\n" );
         return;
@@ -223,6 +260,10 @@ void net_start( const struct app_cfg * c )
      * and spawns the tcpip thread. */
     tcpip_init( NULL, NULL );
 
+    LOCK_TCPIP_CORE();
+    netif_add_ext_callback( &s_ext_cb, on_netif_ext );
+    UNLOCK_TCPIP_CORE();
+
     if( qeneth_netif_add( &s_netif, &ip, &mask, &gw, c->mac,
                           fd, peer.sin_addr.s_addr, peer.sin_port ) != ERR_OK )
     {
@@ -230,8 +271,18 @@ void net_start( const struct app_cfg * c )
         return;
     }
 
-    printf( "drone: interface up, ip=%s/%s gw=%s\n",
-            c->ip, c->netmask, c->gw );
+    if( autoip )
+    {
+        LOCK_TCPIP_CORE();
+        autoip_start( &s_netif );
+        UNLOCK_TCPIP_CORE();
+        printf( "drone: interface up (AutoIP), awaiting claim...\n" );
+    }
+    else
+    {
+        printf( "drone: interface up, ip=%s/%s gw=%s\n",
+                c->ip, c->netmask, c->gw );
+    }
 
     if( c->do_ping )
     {

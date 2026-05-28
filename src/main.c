@@ -47,6 +47,7 @@ int main( int argc, char ** argv )
     {
         return EXIT_FAILURE;
     }
+    app_cfg_finalize( &g_cfg );
 
     printf( "drone: FreeRTOS %s + lwIP, POSIX simulator\n",
             tskKERNEL_VERSION_NUMBER );
