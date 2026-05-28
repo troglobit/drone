@@ -58,7 +58,8 @@ so the generated command line works unchanged.
 
 > If `qn_ip` is set, the drone uses that static address; otherwise it claims a
 > link-local 169.254/16 address via AutoIP (RFC 3927). DHCP is not built in
-> yet — enable `LWIP_DHCP` if you need it.
+> yet — enable `LWIP_DHCP` if you need it. The netif also obtains an IPv6
+> `fe80::EUI64` link-local automatically (SLAAC, derived from the MAC).
 
 ## Where the broker lives
 

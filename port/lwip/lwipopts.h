@@ -50,7 +50,15 @@
 
 /* === Protocols ======================================================== */
 #define LWIP_IPV4                       1
-#define LWIP_IPV6                       0
+#define LWIP_IPV6                       1      /* link-local + SLAAC */
+#define LWIP_IPV6_AUTOCONFIG            1      /* SLAAC for RA-supplied prefixes */
+#define LWIP_ICMP6                      1      /* needed by NDP and ICMPv6 echo */
+#define LWIP_IPV6_MLD                   1      /* multicast listener for v6 ND/mDNS */
+#define LWIP_IPV6_DHCP6                 0
+/* On 64-bit hosts the ip6_reass_helper holds pointers larger than the 8-byte
+ * fragment header it would normally overlay; force the helper into a
+ * separately allocated block.  Harmless on 32-bit targets. */
+#define IPV6_FRAG_COPYHEADER            1
 #define LWIP_ARP                        1
 #define LWIP_ETHERNET                   1
 #define LWIP_ICMP                       1      /* auto echo reply */

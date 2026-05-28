@@ -40,8 +40,9 @@ The device attaches to one UDP-socket link (mirroring QEMU's
 --ping ADDR [COUNT]     send ICMP echo after bring-up (built-in diagnostic)
 ```
 
-The device answers ICMP echo on its own, so any peer can `ping` it.  For a
-check without qeneth, run two instances back to back:
+Each interface also acquires an IPv6 link-local (`fe80::EUI64`) on bring-up,
+derived from the MAC. The device answers ICMP echo on its own, so any peer
+can `ping` it.  For a check without qeneth, run two instances back to back:
 
 ```sh
 utils/run-pair.sh 3

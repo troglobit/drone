@@ -31,9 +31,12 @@ LWIP_CORE = $(addprefix $(LWIPDIR)/core/, \
 	timeouts.c udp.c)
 LWIP_CORE4 = $(addprefix $(LWIPDIR)/core/ipv4/, \
 	acd.c autoip.c dhcp.c etharp.c icmp.c igmp.c ip4_frag.c ip4.c ip4_addr.c)
+LWIP_CORE6 = $(addprefix $(LWIPDIR)/core/ipv6/, \
+	dhcp6.c ethip6.c icmp6.c inet6.c ip6.c ip6_addr.c ip6_frag.c mld6.c nd6.c)
 LWIP_SRCS = \
 	$(LWIP_CORE) \
 	$(LWIP_CORE4) \
+	$(LWIP_CORE6) \
 	$(LWIPDIR)/netif/ethernet.c \
 	$(LWIPDIR)/api/tcpip.c \
 	$(LWIPDIR)/api/err.c \
@@ -95,6 +98,8 @@ run: $(BIN)
 test: $(BIN)
 	@echo "== autoip self-test =="
 	@utils/run-autoip.sh
+	@echo "== ipv6 self-test =="
+	@utils/run-ipv6.sh
 	@echo "== ping self-test =="
 	@utils/run-pair.sh 3
 	@echo "== mqtt self-test =="

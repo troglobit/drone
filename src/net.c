@@ -1,6 +1,7 @@
 /*
  * net.c - argument parsing and lwIP/interface bring-up.
  */
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -208,6 +209,7 @@ static void on_netif_ext( struct netif * nif, netif_nsc_reason_t reason,
                           const netif_ext_callback_args_t * args )
 {
     LWIP_UNUSED_ARG( args );
+
     if( reason & ( LWIP_NSC_IPV4_ADDR_VALID | LWIP_NSC_IPV4_ADDRESS_CHANGED ) )
     {
         const ip4_addr_t * a = netif_ip4_addr( nif );
@@ -216,6 +218,26 @@ static void on_netif_ext( struct netif * nif, netif_nsc_reason_t reason,
             printf( "drone: ipv4 address: %s\n", ip4addr_ntoa( a ) );
         }
     }
+#if LWIP_IPV6
+    if( reason & LWIP_NSC_IPV6_ADDR_STATE_CHANGED )
+    {
+        s8_t idx = args->ipv6_addr_state_changed.addr_index;
+        if( ip6_addr_isvalid( netif_ip6_addr_state( nif, idx ) ) )
+        {
+            /* lwIP's ip6addr_ntoa() predates RFC 5952 and emits uppercase
+             * hex; downcase here so logs match what every other tool prints. */
+            char buf[ 48 ];
+            char * p;
+            snprintf( buf, sizeof buf, "%s",
+                      ip6addr_ntoa( netif_ip6_addr( nif, idx ) ) );
+            for( p = buf; *p != '\0'; p++ )
+            {
+                *p = ( char ) tolower( ( unsigned char ) *p );
+            }
+            printf( "drone: ipv6 address: %s\n", buf );
+        }
+    }
+#endif
 }
 
 void net_start( const struct app_cfg * c )

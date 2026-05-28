@@ -12,6 +12,9 @@
 #include "lwip/opt.h"
 #include "lwip/pbuf.h"
 #include "lwip/etharp.h"
+#if LWIP_IPV6
+#include "lwip/ethip6.h"
+#endif
 #include "lwip/tcpip.h"
 #include "lwip/stats.h"
 #include "netif/ethernet.h"
@@ -113,12 +116,21 @@ static err_t qn_netif_init( struct netif * netif )
     netif->name[ 0 ] = 'q';
     netif->name[ 1 ] = '0';
     netif->output = etharp_output;
+#if LWIP_IPV6
+    netif->output_ip6 = ethip6_output;
+#endif
     netif->linkoutput = qn_linkoutput;
     netif->mtu = 1500;
     netif->hwaddr_len = ETH_HWADDR_LEN;
     memcpy( netif->hwaddr, s->mac, ETH_HWADDR_LEN );
-    netif->flags = NETIF_FLAG_BROADCAST | NETIF_FLAG_ETHARP |
-                   NETIF_FLAG_ETHERNET | NETIF_FLAG_LINK_UP;
+    /* NETIF_FLAG_LINK_UP must NOT be pre-set here: lwIP's netif_set_link_up()
+     * is guarded by !(flags & LINK_UP) and would otherwise short-circuit,
+     * skipping autoip_network_changed_link_up(), the link callback, and the
+     * LWIP_NSC_LINK_CHANGED ext event.  Let qeneth_netif_add() raise it. */
+    netif->flags = NETIF_FLAG_BROADCAST | NETIF_FLAG_ETHARP | NETIF_FLAG_ETHERNET;
+#if LWIP_IPV6 && LWIP_IPV6_MLD
+    netif->flags |= NETIF_FLAG_MLD6;
+#endif
 #if LWIP_NETIF_HOSTNAME
     netif->hostname = "drone";
 #endif
@@ -150,6 +162,11 @@ err_t qeneth_netif_add( struct netif * netif,
         return ERR_IF;
     }
     netif_set_default( netif );
+#if LWIP_IPV6
+    /* Derive fe80::EUI64 from the MAC; DAD then runs when the netif comes up. */
+    netif_create_ip6_linklocal_address( netif, 1 );
+    netif_set_ip6_autoconfig_enabled( netif, 1 );
+#endif
     netif_set_link_up( netif );
     netif_set_up( netif );
     UNLOCK_TCPIP_CORE();

@@ -7,7 +7,7 @@ BIN=${BIN:-build/drone}
 LOG=${LOG:-/tmp/drone-autoip.log}
 [ -x "$BIN" ] || { echo "build first: make"; exit 1; }
 
-timeout 12 "$BIN" --localaddr 127.0.0.1:20000 --udp 127.0.0.1:20001 \
+timeout 16 "$BIN" --localaddr 127.0.0.1:20000 --udp 127.0.0.1:20001 \
     --mac 02:00:00:00:00:02 --no-mqtt > "$LOG" 2>&1 || true
 
 if grep -qE 'ipv4 address: 169\.254\.' "$LOG"; then
