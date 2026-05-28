@@ -10,6 +10,6 @@
 #include "net.h"
 
 /* Start the responder (call after net_start()). */
-void mdns_app_start( const struct app_cfg * cfg );
+void mdns_app_start(const struct app_cfg *cfg);
 
 #endif /* MDNS_APP_H */

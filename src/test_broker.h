@@ -7,6 +7,6 @@
 #include "net.h"
 
 /* Start the test broker (call after net_start()). */
-void test_broker_start( const struct app_cfg * cfg );
+void test_broker_start(const struct app_cfg *cfg);
 
 #endif /* TEST_BROKER_H */

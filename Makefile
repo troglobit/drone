@@ -79,7 +79,7 @@ OBJS = $(addprefix $(BUILD)/obj/,$(notdir $(SRCS:.c=.o)))
 vpath %.c $(sort $(dir $(SRCS)))
 
 # --- Rules -------------------------------------------------------------------
-.PHONY: all run test clean
+.PHONY: all run test format clean
 all: $(BIN)
 
 $(BIN): $(OBJS) | $(BUILD)
@@ -110,6 +110,23 @@ test: $(BIN)
 	@utils/run-pair.sh 3
 	@echo "== mqtt self-test =="
 	@utils/run-mqtt.sh 12
+
+# Reformat the app and port code to Linux KNF (see .clang-format).  Excludes
+# config tables (FreeRTOSConfig.h, lwipopts.h, arch/cc.h) whose manual
+# alignment a formatter would mangle, and the third-party submodules under
+# lib/, which keep their upstream style.
+FORMAT_FILES = \
+	src/main.c \
+	src/net.c src/net.h \
+	src/ping.c src/ping.h \
+	src/mqtt_app.c src/mqtt_app.h \
+	src/mdns_app.c src/mdns_app.h \
+	src/test_broker.c src/test_broker.h \
+	port/lwip/qeneth_netif.c port/lwip/qeneth_netif.h
+
+format:
+	@command -v clang-format >/dev/null || { echo "install clang-format"; exit 1; }
+	clang-format -i $(FORMAT_FILES)
 
 clean:
 	$(RM) -r $(BUILD)

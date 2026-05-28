@@ -8,6 +8,6 @@
 #include "net.h"
 
 /* Start the MQTT client task (call after net_start()). */
-void mqtt_app_start( const struct app_cfg * cfg );
+void mqtt_app_start(const struct app_cfg *cfg);
 
 #endif /* MQTT_APP_H */

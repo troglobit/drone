@@ -1,0 +1,40 @@
+# Linux kernel coding style (KNF) for app and port code.
+#
+# The FreeRTOS kernel, the lwIP stack, and the configuration headers in
+# include/ and port/lwip/ keep their upstream / tabular style; only the files
+# listed in Makefile's FORMAT_FILES are reformatted.  Run `make format`.
+#
+---
+BasedOnStyle:          LLVM
+IndentWidth:           8
+TabWidth:              8
+UseTab:                Always
+ColumnLimit:           80
+BreakBeforeBraces:     Linux
+PointerAlignment:      Right
+
+SpaceBeforeParens:                  ControlStatements
+SpacesInParentheses:                false
+SpacesInSquareBrackets:             false
+SpacesInCStyleCastParentheses:      false
+SpaceAfterCStyleCast:               false
+SpaceBeforeAssignmentOperators:     true
+
+AlignAfterOpenBracket:              Align
+AlignTrailingComments:              true
+AllowShortFunctionsOnASingleLine:   None
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine:       false
+AllowShortBlocksOnASingleLine:      false
+AllowShortCaseLabelsOnASingleLine:  false
+
+BinPackArguments:                   true
+BinPackParameters:                  true
+ContinuationIndentWidth:            8
+IndentCaseLabels:                   false
+KeepEmptyLinesAtTheStartOfBlocks:   false
+MaxEmptyLinesToKeep:                1
+ReflowComments:                     true
+SortIncludes:                       false
+Standard:                           Cpp03
+...

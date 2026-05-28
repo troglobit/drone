@@ -19,67 +19,62 @@
 
 static struct app_cfg g_cfg;
 
-static void app_task( void * arg )
+static void app_task(void *arg)
 {
-    const struct app_cfg * cfg = arg;
+	const struct app_cfg *cfg = arg;
 
-    net_start( cfg );
-    mdns_app_start( cfg );
+	net_start(cfg);
+	mdns_app_start(cfg);
 
-    if( cfg->is_broker )
-    {
-        test_broker_start( cfg );
-    }
-    else if( !cfg->no_mqtt )
-    {
-        mqtt_app_start( cfg );
-    }
+	if (cfg->is_broker) {
+		test_broker_start(cfg);
+	} else if (!cfg->no_mqtt) {
+		mqtt_app_start(cfg);
+	}
 
-    vTaskDelete( NULL );
+	vTaskDelete(NULL);
 }
 
-int main( int argc, char ** argv )
+int main(int argc, char **argv)
 {
-    /* Unbuffered so output shows up promptly when piped through qeneth. */
-    setvbuf( stdout, NULL, _IONBF, 0 );
-    srand( ( unsigned ) ( time( NULL ) ^ getpid() ) );
+	/* Unbuffered so output shows up promptly when piped through qeneth. */
+	setvbuf(stdout, NULL, _IONBF, 0);
+	srand((unsigned)(time(NULL) ^ getpid()));
 
-    app_cfg_defaults( &g_cfg );
-    if( app_cfg_parse( &g_cfg, argc, argv ) != 0 )
-    {
-        return EXIT_FAILURE;
-    }
-    app_cfg_finalize( &g_cfg );
+	app_cfg_defaults(&g_cfg);
+	if (app_cfg_parse(&g_cfg, argc, argv) != 0) {
+		return EXIT_FAILURE;
+	}
+	app_cfg_finalize(&g_cfg);
 
-    printf( "drone: FreeRTOS %s + lwIP, POSIX simulator\n",
-            tskKERNEL_VERSION_NUMBER );
+	printf("drone: FreeRTOS %s + lwIP, POSIX simulator\n",
+	       tskKERNEL_VERSION_NUMBER);
 
-    if( xTaskCreate( app_task, "app", configMINIMAL_STACK_SIZE * 4, &g_cfg,
-                     tskIDLE_PRIORITY + 2, NULL ) != pdPASS )
-    {
-        fprintf( stderr, "drone: failed to create app task\n" );
-        return EXIT_FAILURE;
-    }
+	if (xTaskCreate(app_task, "app", configMINIMAL_STACK_SIZE * 4, &g_cfg,
+			tskIDLE_PRIORITY + 2, NULL) != pdPASS) {
+		fprintf(stderr, "drone: failed to create app task\n");
+		return EXIT_FAILURE;
+	}
 
-    vTaskStartScheduler();
+	vTaskStartScheduler();
 
-    /* vTaskStartScheduler() only returns on insufficient heap. */
-    fprintf( stderr, "drone: scheduler returned - out of heap?\n" );
-    return EXIT_FAILURE;
+	/* vTaskStartScheduler() only returns on insufficient heap. */
+	fprintf(stderr, "drone: scheduler returned - out of heap?\n");
+	return EXIT_FAILURE;
 }
 
 /*-----------------------------------------------------------*/
 /* FreeRTOS application hooks. */
 
-void vApplicationMallocFailedHook( void )
+void vApplicationMallocFailedHook(void)
 {
-    fprintf( stderr, "drone: pvPortMalloc() failed - heap exhausted\n" );
-    abort();
+	fprintf(stderr, "drone: pvPortMalloc() failed - heap exhausted\n");
+	abort();
 }
 
-void vAssertCalled( const char * pcFile, int iLine )
+void vAssertCalled(const char *pcFile, int iLine)
 {
-    fprintf( stderr, "drone: assertion failed at %s:%d\n", pcFile, iLine );
-    fflush( stderr );
-    abort();
+	fprintf(stderr, "drone: assertion failed at %s:%d\n", pcFile, iLine);
+	fflush(stderr);
+	abort();
 }
