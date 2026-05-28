@@ -25,7 +25,7 @@ it.  For details, see [doc/qeneth.md][3].
 git clone --recurse-submodules <this-repo>   # or: git submodule update --init
 make
 ./build/drone --help
-make test                                    # run the self-tests (ping + MQTT)
+make check                                   # run the self-tests (autotools style)
 ```
 
 The device attaches to one UDP-socket link (mirroring QEMU's
@@ -47,7 +47,7 @@ The device answers ICMP echo on its own, so any peer can `ping` it.  For a
 check without qeneth, run two instances back to back:
 
 ```sh
-utils/run-pair.sh 3
+test/pair.sh 3
 # ping 10.0.0.1: 3 request(s)
 # ping: reply from 10.0.0.1: seq=1 time=2 ms
 # ...
@@ -72,7 +72,7 @@ For a demo without an external broker, one instance runs a built-in minimal
 test broker (`--run-broker`) that drives a command sequence:
 
 ```sh
-utils/run-mqtt.sh
+test/mqtt.sh
 # test-broker: <- [dev/dev01/telemetry] {"seq":6,"val":183,"pattern":"sine","led":0}
 # test-broker: -> cmd "led on"
 # test-broker: <- [dev/dev01/resp] led=on
@@ -100,9 +100,9 @@ an Infix node.
 | src/ping.c                      | built-in ICMP echo diagnostic                          |
 | src/mqtt_app.c                  | MQTT client: telemetry + command handling              |
 | src/test_broker.c               | minimal MQTT broker test fixture (--run-broker)        |
-| utils/run-pair.sh               | two-instance back-to-back ping self-test               |
-| utils/run-mqtt.sh               | device + test-broker MQTT self-test                    |
-| Makefile                        | gcc + make build                                       |
+| test/                           | self-test scripts (one per slice); test.mk is included |
+| utils/drone.sh                  | shared shell helpers (drone_require_bin, drone_run_bg) |
+| Makefile / .clang-format        | gcc + make build, plus `make format` for Linux KNF     |
 
 [1]: https://github.com/wkz/qeneth
 [2]: https://github.com/kernelkit/infix

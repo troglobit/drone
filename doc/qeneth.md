@@ -84,12 +84,13 @@ with a meaningful role label.
 
 ## Without qeneth
 
-For quick local checks you don't need qeneth at all. The `utils/` scripts wire
-two `drone` processes together over a local UDP-socket link:
+For quick local checks you don't need qeneth at all.  The scripts under
+`test/` wire two `drone` processes together over a local UDP-socket link
+(sharing the helpers in `utils/drone.sh`):
 
 ```sh
-utils/run-pair.sh     # ICMP ping across the link
-utils/run-mqtt.sh     # MQTT telemetry + command round-trip
+test/pair.sh     # ICMP ping across the link
+test/mqtt.sh     # MQTT telemetry + command round-trip
 ```
 
 [1]: https://github.com/wkz/qeneth

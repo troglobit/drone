@@ -79,7 +79,7 @@ OBJS = $(addprefix $(BUILD)/obj/,$(notdir $(SRCS:.c=.o)))
 vpath %.c $(sort $(dir $(SRCS)))
 
 # --- Rules -------------------------------------------------------------------
-.PHONY: all run test format clean
+.PHONY: all run format clean
 all: $(BIN)
 
 $(BIN): $(OBJS) | $(BUILD)
@@ -97,19 +97,9 @@ $(BUILD) $(BUILD)/obj:
 run: $(BIN)
 	./$(BIN)
 
-# Dependency-free self-tests: two back-to-back drone processes over a local
-# UDP-socket link (no broker, no root, no qeneth).
-test: $(BIN)
-	@echo "== autoip self-test =="
-	@utils/run-autoip.sh
-	@echo "== ipv6 self-test =="
-	@utils/run-ipv6.sh
-	@echo "== mdns self-test =="
-	@utils/run-mdns.sh
-	@echo "== ping self-test =="
-	@utils/run-pair.sh 3
-	@echo "== mqtt self-test =="
-	@utils/run-mqtt.sh 12
+# Self-tests live in their own makefile so they can grow without bloating
+# this one.  Defines the `test` target.
+include test/test.mk
 
 # Reformat the app and port code to Linux KNF (see .clang-format).  Excludes
 # config tables (FreeRTOSConfig.h, lwipopts.h, arch/cc.h) whose manual
