@@ -38,8 +38,11 @@ void app_cfg_defaults(struct app_cfg *c)
 	c->mac[3] = 0x00;
 	c->mac[4] = 0x00;
 	c->mac[5] = 0x02;
-	strcpy(c->broker_ip, "10.0.0.1");
+	/* No broker_ip default: when --broker is omitted, mqtt_app waits for
+	 * the broker address to arrive via LLDP. */
 	c->broker_port = 1883;
+	c->lldp_interval = 30;
+	c->lldp_ttl = 120;
 	c->ping_count = 4;
 }
 
@@ -77,8 +80,13 @@ static void usage(const char *argv0)
 		"02:00:00:00:00:02)\n"
 		"  --hostname NAME         device id / role (default: "
 		"drone-XXYYZZ from MAC)\n"
-		"  --broker ADDR[:PORT]    MQTT broker (default "
-		"10.0.0.1:1883)\n"
+		"  --broker ADDR[:PORT]    MQTT broker; without this, the "
+		"address is discovered from\n"
+		"                          a neighbor's LLDP "
+		"Management-Address TLV\n"
+		"  --lldp-interval SECS    LLDP TX cadence (default 30)\n"
+		"  --lldp-ttl SECS         LLDP TTL we advertise (default "
+		"120)\n"
 		"  --run-broker            act as the built-in test broker "
 		"instead\n"
 		"  --no-mqtt               skip the MQTT client (diagnostics "
@@ -141,6 +149,24 @@ int app_cfg_parse(struct app_cfg *c, int argc, char **argv)
 			}
 			snprintf(c->broker_ip, sizeof c->broker_ip, "%s",
 				 argv[i]);
+		} else if (!strcmp(a, "--lldp-interval")) {
+			NEED_ARG();
+			c->lldp_interval = atoi(argv[i]);
+			if (c->lldp_interval < 1) {
+				fprintf(stderr,
+					"--lldp-interval must be >= 1 (got '%s')\n",
+					argv[i]);
+				return -1;
+			}
+		} else if (!strcmp(a, "--lldp-ttl")) {
+			NEED_ARG();
+			c->lldp_ttl = atoi(argv[i]);
+			if (c->lldp_ttl < 1) {
+				fprintf(stderr,
+					"--lldp-ttl must be >= 1 (got '%s')\n",
+					argv[i]);
+				return -1;
+			}
 		} else if (!strcmp(a, "--ping")) {
 			NEED_ARG();
 			snprintf(c->ping_target, sizeof c->ping_target, "%s",
@@ -272,7 +298,7 @@ static void on_netif_ext(struct netif *nif, netif_nsc_reason_t reason,
 #endif
 }
 
-void net_start(const struct app_cfg *c)
+int net_start(const struct app_cfg *c)
 {
 	ip4_addr_t ip, mask, gw;
 	struct sockaddr_in peer;
@@ -287,17 +313,17 @@ void net_start(const struct app_cfg *c)
 		   !ip4addr_aton(c->netmask, &mask) ||
 		   !ip4addr_aton(c->gw, &gw)) {
 		fprintf(stderr, "drone: bad IP configuration\n");
-		return;
+		return -1;
 	}
 
 	if (parse_hostport(c->peeraddr, &peer) != 0) {
 		fprintf(stderr, "drone: bad --udp '%s'\n", c->peeraddr);
-		return;
+		return -1;
 	}
 
 	fd = open_link_socket(c->localaddr);
 	if (fd < 0) {
-		return;
+		return -1;
 	}
 
 	printf("drone: link bind=%s peer=%s "
@@ -316,7 +342,8 @@ void net_start(const struct app_cfg *c)
 	if (qeneth_netif_add(&s_netif, &ip, &mask, &gw, c->mac, fd,
 			     peer.sin_addr.s_addr, peer.sin_port) != ERR_OK) {
 		fprintf(stderr, "drone: failed to add interface\n");
-		return;
+		close(fd);
+		return -1;
 	}
 
 	if (autoip) {
@@ -339,4 +366,11 @@ void net_start(const struct app_cfg *c)
 				c->ping_target);
 		}
 	}
+
+	return 0;
+}
+
+struct netif *net_netif(void)
+{
+	return &s_netif;
 }

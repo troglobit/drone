@@ -53,7 +53,7 @@ so the generated command line works unchanged.
 | `qn_bin`     | `drone` (PATH)   | path to the binary                        |
 | `qn_ip`      | *(none, AutoIP)* | static IPv4 address; omit for AutoIP      |
 | `qn_gw`      | *(none, AutoIP)* | default gateway                           |
-| `qn_broker`  | `10.0.0.1:1883`  | MQTT broker address                       |
+| `qn_broker`  | *(none, LLDP)*   | MQTT broker; omit to discover via LLDP    |
 | `qn_extra`   | *(none)*         | extra flags, e.g. `--run-broker`          |
 
 > If `qn_ip` is set, the drone uses that static address; otherwise it claims a
@@ -63,14 +63,20 @@ so the generated command line works unchanged.
 
 ## Where the broker lives
 
-The device opens a TCP/MQTT connection to `qn_broker` over the qeneth L2
-network; no host TAP or bridging is involved. Two common setups:
+By default the device discovers its broker from LLDP: a neighbor advertising
+a Management-Address TLV is taken to be the broker, and the device connects
+to that IPv4 on port 1883.  Infix's `lldpd` advertises the node's mgmt IP
+out of the box, so no extra configuration is needed for the lab case.  Two
+common setups:
 
-- Real broker (the lab default): run `mosquitto` on an Infix or other Linux node
-  configured with the broker IP, e.g. `10.0.0.1`. This is the Dragnet setup.
+- Real broker (the lab default): run `mosquitto` on an Infix or other Linux
+  node; its `lldpd` advertises the node's mgmt IP and drone picks it up
+  automatically.  This is the Dragnet setup.  Set `qn_broker` to override
+  (skips discovery), e.g. `qn_broker="10.0.0.1:1883"` while bringing things
+  up.
 - Self-contained (no Infix or mosquitto): make the peer a second `drone` with
-  `qn_template="drone"`, `qn_extra="--run-broker"`, `qn_ip="10.0.0.1"`. It runs
-  the built-in test broker and drives a command sequence.
+  `qn_template="drone"`, `qn_extra="--run-broker"`, `qn_ip="10.0.0.1"`.  Both
+  drones send LLDP, the device side learns the broker IP and connects.
 
 ## Discovering drones
 

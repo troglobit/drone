@@ -9,7 +9,8 @@
 # exits 0 (PASS), 77 (SKIP), or non-zero (FAIL); the summary block is the
 # familiar autotools format.
 
-TESTS = test/autoip.sh test/ipv6.sh test/mdns.sh test/pair.sh test/mqtt.sh
+TESTS = test/autoip.sh test/ipv6.sh test/mdns.sh test/pair.sh test/mqtt.sh \
+        test/lldp.sh
 
 .PHONY: check
 

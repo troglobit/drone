@@ -78,9 +78,14 @@ test/mqtt.sh
 # test-broker: <- [dev/dev01/resp] led=on
 ```
 
-To point the device at a real broker instead, use `--broker ADDR[:PORT]`
-(default `10.0.0.1:1883`).  In the qeneth lab the broker is mosquitto on
-an Infix node.
+By default the device discovers its broker over LLDP: a neighboring switch
+(or any LLDP-speaking peer) advertising a Management-Address TLV is taken
+to be the broker, and the device connects to that IPv4 on port 1883.
+Until a frame arrives the device logs `waiting for LLDP from neighboring
+MQTT broker` once every 10 s.  Pass `--broker ADDR[:PORT]` to override
+(used by `test/mqtt.sh`, or when LLDP is unavailable).  drone also sends
+its own LLDP frames every 30 s so each switch shows it in `lldpcli show
+neighbors`, which doubles as a free fleet inventory.
 
 ## Layout
 
@@ -93,15 +98,18 @@ an Infix node.
 | lib/lwip                        | submodule, pinned STABLE-2_2_1_RELEASE (incl. contrib) |
 | port/lwip/lwipopts.h            | lwIP options; arch/cc.h is the platform shim           |
 | port/lwip/qeneth_netif.c        | custom lwIP netif over a host UDP socket               |
+| port/lwip/raw_ethertype.c       | EtherType dispatch (LLDP consumes 0x88CC before IP)    |
 | qeneth/templates/drone.mustache | qeneth node launcher template                          |
 | qeneth/topology.dot.in          | example qeneth topology                                |
 | src/main.c                      | entry: parse args, start scheduler                     |
 | src/net.c                       | config + lwIP/interface bring-up                       |
 | src/ping.c                      | built-in ICMP echo diagnostic                          |
 | src/mqtt_app.c                  | MQTT client: telemetry + command handling              |
+| src/lldp.c                      | LLDP TX/RX; broker addr from neighbor Management TLV   |
 | src/test_broker.c               | minimal MQTT broker test fixture (--run-broker)        |
 | test/                           | self-test scripts (one per slice); test.mk is included |
 | utils/drone.sh                  | shared shell helpers (drone_require_bin, drone_run_bg) |
+| utils/lldp_frame.py             | synthetic LLDP injector (for negative/edge-case tests) |
 | Makefile / .clang-format        | gcc + make build, plus `make fmt` for Linux KNF        |
 
 [1]: https://github.com/wkz/qeneth

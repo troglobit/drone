@@ -6,6 +6,8 @@
 
 #include <stdint.h>
 
+#include "lwip/netif.h"
+
 struct app_cfg {
 	char localaddr[64]; /* "host:port" to bind the link socket to    */
 	char peeraddr[64];  /* "host:port" datagrams are sent to         */
@@ -15,10 +17,13 @@ struct app_cfg {
 	uint8_t mac[6];
 	char hostname[32]; /* also used as the MQTT client/device id     */
 
-	char broker_ip[16]; /* MQTT broker address                        */
+	char broker_ip[16]; /* MQTT broker address; empty -> discover via LLDP */
 	int broker_port;
 	int is_broker; /* run the built-in test broker fixture       */
 	int no_mqtt;   /* skip the MQTT client (diagnostics only)    */
+
+	int lldp_interval; /* LLDP TX cadence (seconds)               */
+	int lldp_ttl;	   /* LLDP TTL value we advertise (seconds)   */
 
 	int do_ping; /* run the built-in pinger after bring-up    */
 	char ping_target[16];
@@ -31,7 +36,12 @@ void app_cfg_finalize(struct app_cfg *c); /* derive defaults that depend
 						 on other fields (hostname). */
 
 /* Initialise lwIP, bring up the interface, and start enabled services.
- * Must be called from a FreeRTOS task (after the scheduler is running). */
-void net_start(const struct app_cfg *c);
+ * Must be called from a FreeRTOS task (after the scheduler is running).
+ * Returns 0 on success, -1 on failure (caller must NOT touch net_netif()
+ * or call any lwIP/LLDP/MQTT helper if this returns non-zero). */
+int net_start(const struct app_cfg *c);
+
+/* Accessor for the single drone netif; valid after net_start() returns. */
+struct netif *net_netif(void);
 
 #endif /* NET_H */

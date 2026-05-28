@@ -4,7 +4,9 @@
 # Exports:
 #   PORT_SRCS, PORT_INCS, PORT_OBJS
 
-PORT_SRCS = port/lwip/qeneth_netif.c
+PORT_SRCS = \
+	port/lwip/qeneth_netif.c \
+	port/lwip/raw_ethertype.c
 
 # port/lwip/ also hosts lwipopts.h and arch/cc.h, found via LWIP_INCS.
 PORT_INCS =

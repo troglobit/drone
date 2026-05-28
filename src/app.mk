@@ -9,6 +9,7 @@ APP_SRCS = \
 	src/ping.c \
 	src/mqtt_app.c \
 	src/mdns_app.c \
+	src/lldp.c \
 	src/test_broker.c
 
 # App headers (mdns_app.h, mqtt_app.h, ...) sit alongside their sources, so

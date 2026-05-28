@@ -18,6 +18,7 @@
 #include "lwip/tcpip.h"
 #include "lwip/ip_addr.h"
 
+#include "lldp.h"
 #include "mqtt_app.h"
 
 #define TWO_PI 6.28318530718
@@ -30,6 +31,7 @@ static struct mqtt_connect_client_info_t s_ci;
 static ip_addr_t s_broker_ip;
 static u16_t s_broker_port;
 static char s_clientid[32];
+static char s_broker_cfg[16]; /* explicit --broker addr ("" if discover) */
 
 static char s_topic_tel[64];
 static char s_topic_cmd[64];
@@ -201,9 +203,25 @@ static void connection_cb(mqtt_client_t *client, void *arg,
 	}
 }
 
+/* Resolve the broker IP for the next connect attempt: explicit --broker wins,
+ * otherwise the latest address LLDP has reported.  Returns false while LLDP
+ * hasn't seen a Management-Address TLV yet. */
+static bool resolve_broker_ip(ip_addr_t *out)
+{
+	if (s_broker_cfg[0] != '\0') {
+		if (!ip4addr_aton(s_broker_cfg, ip_2_ip4(out))) {
+			return false;
+		}
+		IP_SET_TYPE(out, IPADDR_TYPE_V4);
+		return true;
+	}
+	return lldp_get_neighbor_addr(out);
+}
+
 static void mqtt_task(void *arg)
 {
 	unsigned seq = 0;
+	int wait_ticks = 0;
 
 	LWIP_UNUSED_ARG(arg);
 
@@ -214,10 +232,24 @@ static void mqtt_task(void *arg)
 		return;
 	}
 
+	/* Wait for a broker address.  With --broker this returns immediately;
+	 * otherwise we poll LLDP, logging once every ~10s. */
+	while (!resolve_broker_ip(&s_broker_ip)) {
+		if ((wait_ticks % 10) == 0) {
+			printf("drone: waiting for LLDP from neighboring "
+			       "MQTT broker\n");
+		}
+		vTaskDelay(pdMS_TO_TICKS(1000));
+		wait_ticks++;
+	}
+
 	for (;;) {
 		if (!s_connected) {
 			err_t e;
 
+			/* Refresh from LLDP on each attempt so we follow the
+			 * neighbor's latest mgmt addr. */
+			resolve_broker_ip(&s_broker_ip);
 			printf("mqtt: connecting to %s:%u as \"%s\"\n",
 			       ipaddr_ntoa(&s_broker_ip), s_broker_port,
 			       s_clientid);
@@ -275,11 +307,18 @@ static void mqtt_task(void *arg)
 
 void mqtt_app_start(const struct app_cfg *cfg)
 {
-	if (!ip4addr_aton(cfg->broker_ip, ip_2_ip4(&s_broker_ip))) {
-		printf("mqtt: bad broker ip '%s'\n", cfg->broker_ip);
-		return;
+	/* If --broker was given, validate it up front: otherwise a typo (e.g.
+	 * "--broker 10.0.0,1") would silently route into the LLDP wait loop
+	 * and hide the operator's mistake behind the "waiting" message. */
+	if (cfg->broker_ip[0] != '\0') {
+		ip_addr_t tmp;
+		if (!ip4addr_aton(cfg->broker_ip, ip_2_ip4(&tmp))) {
+			printf("mqtt: bad --broker '%s'\n", cfg->broker_ip);
+			return;
+		}
 	}
-	IP_SET_TYPE(&s_broker_ip, IPADDR_TYPE_V4);
+
+	snprintf(s_broker_cfg, sizeof s_broker_cfg, "%s", cfg->broker_ip);
 	s_broker_port = (u16_t)cfg->broker_port;
 
 	snprintf(s_clientid, sizeof s_clientid, "%s", cfg->hostname);

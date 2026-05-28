@@ -20,6 +20,7 @@
 #include "netif/ethernet.h"
 
 #include "qeneth_netif.h"
+#include "raw_ethertype.h"
 
 #define QN_FRAME_MAX 1536
 #define QN_RX_TASK_PRIO (configMAX_PRIORITIES - 3)
@@ -91,9 +92,12 @@ static void qn_rx_task(void *arg)
 			pbuf_take(p, buf, (u16_t)n);
 			LINK_STATS_INC(link.recv);
 
-			/* netif->input is tcpip_input(): thread-safe hand-off
-			 * to tcpip. */
-			if (s->netif->input(p, s->netif) != ERR_OK) {
+			/* Raw EtherType handlers (LLDP, ...) consume frames
+			 * before they reach the IP stack.  netif->input is
+			 * tcpip_input(): thread-safe hand-off to tcpip. */
+			if (raw_ethertype_dispatch(p, s->netif)) {
+				/* handler now owns p */
+			} else if (s->netif->input(p, s->netif) != ERR_OK) {
 				pbuf_free(p);
 			}
 		}
