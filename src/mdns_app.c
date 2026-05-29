@@ -16,7 +16,7 @@
 #include "mdns_app.h"
 
 static char s_hostname[32];
-static char s_broker[24];
+static char s_broker[80]; /* sized for "<63-char host>:<port>\0" */
 
 /* Format a single TXT item into a bounded buffer and emit it, clamping the
  * length so we never hand mDNS more bytes than were actually written. */
@@ -69,11 +69,12 @@ void mdns_app_start(const struct app_cfg *cfg)
 
 	snprintf(s_hostname, sizeof s_hostname, "%s", cfg->hostname);
 
-	/* Only advertise the broker if we'll actually be using it; with
-	 * --no-mqtt the static buffer stays empty and srv_txt skips the mqtt=
-	 * TXT. */
-	if (!cfg->no_mqtt) {
-		snprintf(s_broker, sizeof s_broker, "%s:%d", cfg->broker_ip,
+	/* Only advertise the broker if we know its address up front: with
+	 * --no-mqtt OR LLDP-driven discovery (broker_host empty), s_broker
+	 * stays empty and srv_txt skips the mqtt= TXT.  Avoids advertising
+	 * a malformed ":1883" record in the LLDP-discovery case. */
+	if (!cfg->no_mqtt && (cfg->broker_host[0] != '\0')) {
+		snprintf(s_broker, sizeof s_broker, "%s:%d", cfg->broker_host,
 			 cfg->broker_port);
 	}
 

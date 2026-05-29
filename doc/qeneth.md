@@ -78,6 +78,19 @@ common setups:
   `qn_template="drone"`, `qn_extra="--run-broker"`, `qn_ip="10.0.0.1"`.  Both
   drones send LLDP, the device side learns the broker IP and connects.
 
+`qn_broker` accepts either an IPv4 dotted-decimal (`10.0.0.1:1883`) or a
+`*.local` hostname (`broker1.local:1883`).  Hostnames are resolved via a
+one-shot mDNS A-record query against the upstream peer's mDNS responder, so
+no DNS server is required.
+
+> **Slow upstream tolerance:** Linux/Infix nodes typically take ~30 s to
+> bring up `lldpd` and the mDNS responder, while a drone reaches the wait
+> loop in well under a second.  drone keeps polling indefinitely (every
+> 1 s for LLDP, every ~3 s for mDNS), logging once every ~10 s, so a
+> drone launched at the same instant as its upstream still converges to a
+> working connection as soon as the upstream is ready.  No special timing
+> dance from the launcher.
+
 ## Discovering drones
 
 Every drone announces itself on the qeneth L2 as `<hostname>.local` via

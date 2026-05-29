@@ -5,10 +5,26 @@
  * received on dev/<id>/cmd and answered on dev/<id>/resp.  Supported commands:
  *   ping | status | rate <ms> | pattern <ramp|sine|random|const> |
  *   led <on|off> | reboot
+ *
+ * Broker address resolution (each connect attempt re-resolves so we follow
+ * topology changes):
+ *
+ *   1. --broker as IPv4 dotted-decimal   -> parsed locally.
+ *   2. --broker as *.local hostname       -> resolved via mdns_resolve()
+ *                                            (one query per attempt, 2s
+ *                                            timeout, retries indefinitely).
+ *   3. no --broker                        -> wait for LLDP, take the
+ *                                            neighbor's Management-Address
+ *                                            TLV and port 1883.
+ *
+ * Each retry path keeps polling forever -- Linux/Infix peers can take
+ * ~30 s to bring up lldpd and the mDNS responder, and we don't want to
+ * fail prematurely on a slow upstream.
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <math.h>
 
 #include "FreeRTOS.h"
@@ -19,6 +35,7 @@
 #include "lwip/ip_addr.h"
 
 #include "lldp.h"
+#include "mdns_resolve.h"
 #include "mqtt_app.h"
 
 #define TWO_PI 6.28318530718
@@ -31,7 +48,8 @@ static struct mqtt_connect_client_info_t s_ci;
 static ip_addr_t s_broker_ip;
 static u16_t s_broker_port;
 static char s_clientid[32];
-static char s_broker_cfg[16]; /* explicit --broker addr ("" if discover) */
+static char s_broker_host[64]; /* explicit --broker host ("" if LLDP) */
+static char s_wait_msg[96];    /* what we tell the operator we're waiting on */
 
 static char s_topic_tel[64];
 static char s_topic_cmd[64];
@@ -74,6 +92,64 @@ static int pattern_value(enum pattern p, unsigned seq)
 	default:
 		return (int)(seq & 0xff); /* ramp */
 	}
+}
+
+/* Recognise a .local-style hostname.  Per RFC 6762 §16 mDNS comparisons
+ * are case-insensitive, so the suffix check uses strncasecmp.  Also
+ * tolerates a trailing FQDN dot ("broker1.local."), and validates each
+ * label between the dots: non-empty, no leading/trailing hyphen, LDH
+ * characters only.  Rejects empty labels ("..local"), leading dots
+ * (".broker1.local"), and leading-hyphen labels ("-broker1.local") -- those
+ * would otherwise pass the validator and then silently spin in the
+ * wait loop because the on-wire mDNS encoder rejects them. */
+static bool looks_like_local(const char *s)
+{
+	size_t n = strlen(s);
+	const char suffix[] = ".local";
+	const size_t slen = sizeof(suffix) - 1;
+	bool in_label = false;
+	char prev = '\0';
+	size_t labels = 0;
+
+	/* Drop a trailing FQDN dot if present. */
+	if ((n > 0) && (s[n - 1] == '.')) {
+		n--;
+	}
+	if ((n < slen + 1) ||
+	    (strncasecmp(s + n - slen, suffix, slen) != 0)) {
+		return false;
+	}
+
+	/* Validate every label up to (not including) ".local". */
+	for (size_t i = 0; i < n - slen; i++) {
+		char c = s[i];
+		if (c == '.') {
+			if (!in_label || (prev == '-')) {
+				return false;
+			}
+			labels++;
+			in_label = false;
+			prev = '\0';
+		} else {
+			bool alnum = ((c >= 'a') && (c <= 'z')) ||
+				     ((c >= 'A') && (c <= 'Z')) ||
+				     ((c >= '0') && (c <= '9'));
+			if (!alnum && (c != '-')) {
+				return false;
+			}
+			if (!in_label && (c == '-')) {
+				return false; /* leading hyphen */
+			}
+			in_label = true;
+			prev = c;
+		}
+	}
+	if (!in_label || (prev == '-')) {
+		return false;
+	}
+	labels++;
+
+	return labels > 0;
 }
 
 /* Publish a reply on dev/<id>/resp.  Called from the tcpip thread (incoming
@@ -203,19 +279,24 @@ static void connection_cb(mqtt_client_t *client, void *arg,
 	}
 }
 
-/* Resolve the broker IP for the next connect attempt: explicit --broker wins,
- * otherwise the latest address LLDP has reported.  Returns false while LLDP
- * hasn't seen a Management-Address TLV yet. */
+/* Resolve the broker IP for the next connect attempt:
+ *   - explicit IPv4 in --broker         -> parse directly
+ *   - explicit *.local hostname         -> mDNS query (2s timeout)
+ *   - no --broker                       -> LLDP neighbor mgmt-addr
+ * Each call sends at most one mDNS query packet; the wait loop in
+ * mqtt_task supplies the retry cadence. */
 static bool resolve_broker_ip(ip_addr_t *out)
 {
-	if (s_broker_cfg[0] != '\0') {
-		if (!ip4addr_aton(s_broker_cfg, ip_2_ip4(out))) {
-			return false;
-		}
+	if (s_broker_host[0] == '\0') {
+		return lldp_get_neighbor_addr(out);
+	}
+	if (ip4addr_aton(s_broker_host, ip_2_ip4(out))) {
 		IP_SET_TYPE(out, IPADDR_TYPE_V4);
 		return true;
 	}
-	return lldp_get_neighbor_addr(out);
+	/* .local hostname: one-shot mDNS A-record query.  Slow Linux/Infix
+	 * peers take ~30s to come up; we just keep polling until they do. */
+	return mdns_resolve(s_broker_host, out, 2000);
 }
 
 static void mqtt_task(void *arg)
@@ -232,12 +313,13 @@ static void mqtt_task(void *arg)
 		return;
 	}
 
-	/* Wait for a broker address.  With --broker this returns immediately;
-	 * otherwise we poll LLDP, logging once every ~10s. */
+	/* Wait for a broker address.  IPv4 in --broker resolves instantly;
+	 * LLDP / mDNS may take a while if the upstream is a slow Linux peer.
+	 * The message in s_wait_msg was precomputed in mqtt_app_start so the
+	 * operator can see WHICH mechanism is blocking. */
 	while (!resolve_broker_ip(&s_broker_ip)) {
 		if ((wait_ticks % 10) == 0) {
-			printf("drone: waiting for LLDP from neighboring "
-			       "MQTT broker\n");
+			printf("drone: %s\n", s_wait_msg);
 		}
 		vTaskDelay(pdMS_TO_TICKS(1000));
 		wait_ticks++;
@@ -247,8 +329,10 @@ static void mqtt_task(void *arg)
 		if (!s_connected) {
 			err_t e;
 
-			/* Refresh from LLDP on each attempt so we follow the
-			 * neighbor's latest mgmt addr. */
+			/* Re-resolve on each attempt so we follow neighbor or
+			 * mDNS changes.  resolve_broker_ip may return false on
+			 * a transient mDNS / LLDP hiccup; in that case fall
+			 * back to the last known good address. */
 			resolve_broker_ip(&s_broker_ip);
 			printf("mqtt: connecting to %s:%u as \"%s\"\n",
 			       ipaddr_ntoa(&s_broker_ip), s_broker_port,
@@ -307,19 +391,40 @@ static void mqtt_task(void *arg)
 
 void mqtt_app_start(const struct app_cfg *cfg)
 {
-	/* If --broker was given, validate it up front: otherwise a typo (e.g.
-	 * "--broker 10.0.0,1") would silently route into the LLDP wait loop
-	 * and hide the operator's mistake behind the "waiting" message. */
-	if (cfg->broker_ip[0] != '\0') {
+	bool is_ipv4 = false;
+	bool is_local = false;
+
+	/* Up-front validation so a typo doesn't silently disappear into the
+	 * wait loop and look like a discovery problem. */
+	if (cfg->broker_host[0] != '\0') {
 		ip_addr_t tmp;
-		if (!ip4addr_aton(cfg->broker_ip, ip_2_ip4(&tmp))) {
-			printf("mqtt: bad --broker '%s'\n", cfg->broker_ip);
+		is_ipv4 = ip4addr_aton(cfg->broker_host, ip_2_ip4(&tmp));
+		is_local = looks_like_local(cfg->broker_host);
+		if (!is_ipv4 && !is_local) {
+			printf("mqtt: bad --broker '%s' (need IPv4 or "
+			       "*.local hostname)\n",
+			       cfg->broker_host);
 			return;
 		}
 	}
 
-	snprintf(s_broker_cfg, sizeof s_broker_cfg, "%s", cfg->broker_ip);
+	snprintf(s_broker_host, sizeof s_broker_host, "%s", cfg->broker_host);
 	s_broker_port = (u16_t)cfg->broker_port;
+
+	/* Compose the wait-loop message once; the mqtt_task just prints it. */
+	if (s_broker_host[0] == '\0') {
+		snprintf(s_wait_msg, sizeof s_wait_msg,
+			 "waiting for LLDP from neighboring MQTT broker");
+	} else if (is_local) {
+		snprintf(s_wait_msg, sizeof s_wait_msg,
+			 "waiting for mDNS to resolve %s", s_broker_host);
+	} else {
+		/* IPv4: resolve_broker_ip will succeed immediately and the
+		 * wait loop won't run, but seed something readable just in
+		 * case (e.g. a future netif-down transient). */
+		snprintf(s_wait_msg, sizeof s_wait_msg,
+			 "waiting for netif to come up");
+	}
 
 	snprintf(s_clientid, sizeof s_clientid, "%s", cfg->hostname);
 	snprintf(s_topic_tel, sizeof s_topic_tel, "dev/%s/telemetry",

@@ -17,7 +17,9 @@ struct app_cfg {
 	uint8_t mac[6];
 	char hostname[32]; /* also used as the MQTT client/device id     */
 
-	char broker_ip[16]; /* MQTT broker address; empty -> discover via LLDP */
+	/* MQTT broker, IPv4 dotted-decimal or *.local hostname; empty ->
+	 * discover via LLDP.  Sized for a .local FQDN. */
+	char broker_host[64];
 	int broker_port;
 	int is_broker; /* run the built-in test broker fixture       */
 	int no_mqtt;   /* skip the MQTT client (diagnostics only)    */

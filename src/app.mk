@@ -9,6 +9,7 @@ APP_SRCS = \
 	src/ping.c \
 	src/mqtt_app.c \
 	src/mdns_app.c \
+	src/mdns_resolve.c \
 	src/lldp.c \
 	src/test_broker.c
 

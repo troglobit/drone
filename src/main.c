@@ -15,6 +15,7 @@
 #include "net.h"
 #include "lldp.h"
 #include "mdns_app.h"
+#include "mdns_resolve.h"
 #include "mqtt_app.h"
 #include "test_broker.h"
 
@@ -28,6 +29,9 @@ static void app_task(void *arg)
 		exit(EXIT_FAILURE);
 	}
 	if (!lldp_init(net_netif(), cfg)) {
+		exit(EXIT_FAILURE);
+	}
+	if (!mdns_resolve_init()) {
 		exit(EXIT_FAILURE);
 	}
 	mdns_app_start(cfg);

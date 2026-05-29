@@ -82,10 +82,16 @@ By default the device discovers its broker over LLDP: a neighboring switch
 (or any LLDP-speaking peer) advertising a Management-Address TLV is taken
 to be the broker, and the device connects to that IPv4 on port 1883.
 Until a frame arrives the device logs `waiting for LLDP from neighboring
-MQTT broker` once every 10 s.  Pass `--broker ADDR[:PORT]` to override
-(used by `test/mqtt.sh`, or when LLDP is unavailable).  drone also sends
-its own LLDP frames every 30 s so each switch shows it in `lldpcli show
-neighbors`, which doubles as a free fleet inventory.
+MQTT broker` once every 10 s.  drone also sends its own LLDP frames every
+30 s so each switch shows it in `lldpcli show neighbors`, which doubles as
+a free fleet inventory.
+
+`--broker ADDR[:PORT]` overrides discovery.  ADDR is either an IPv4 dotted-
+decimal or a `*.local` hostname that drone resolves via mDNS (one-shot
+A-record query with the QU bit, see [src/mdns_resolve.c][4]).  The wait
+loop retries indefinitely so a slow Linux/Infix peer that needs ~30 s to
+bring up `lldpd` or `avahi` is handled naturally — drone just keeps trying
+until the upstream answers.
 
 ## Layout
 
@@ -106,6 +112,7 @@ neighbors`, which doubles as a free fleet inventory.
 | src/ping.c                      | built-in ICMP echo diagnostic                          |
 | src/mqtt_app.c                  | MQTT client: telemetry + command handling              |
 | src/lldp.c                      | LLDP TX/RX; broker addr from neighbor Management TLV   |
+| src/mdns_resolve.c              | one-shot mDNS A-record querier (`*.local` -> IPv4)     |
 | src/test_broker.c               | minimal MQTT broker test fixture (--run-broker)        |
 | test/                           | self-test scripts (one per slice); test.mk is included |
 | utils/drone.sh                  | shared shell helpers (drone_require_bin, drone_run_bg) |
@@ -115,3 +122,4 @@ neighbors`, which doubles as a free fleet inventory.
 [1]: https://github.com/wkz/qeneth
 [2]: https://github.com/kernelkit/infix
 [3]: doc/qeneth.md
+[4]: src/mdns_resolve.c

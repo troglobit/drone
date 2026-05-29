@@ -38,8 +38,8 @@ void app_cfg_defaults(struct app_cfg *c)
 	c->mac[3] = 0x00;
 	c->mac[4] = 0x00;
 	c->mac[5] = 0x02;
-	/* No broker_ip default: when --broker is omitted, mqtt_app waits for
-	 * the broker address to arrive via LLDP. */
+	/* No broker_host default: when --broker is omitted, mqtt_app waits
+	 * for the broker address to arrive via LLDP. */
 	c->broker_port = 1883;
 	c->lldp_interval = 30;
 	c->lldp_ttl = 120;
@@ -80,10 +80,10 @@ static void usage(const char *argv0)
 		"02:00:00:00:00:02)\n"
 		"  --hostname NAME         device id / role (default: "
 		"drone-XXYYZZ from MAC)\n"
-		"  --broker ADDR[:PORT]    MQTT broker; without this, the "
-		"address is discovered from\n"
-		"                          a neighbor's LLDP "
-		"Management-Address TLV\n"
+		"  --broker ADDR[:PORT]    MQTT broker as IPv4 or *.local "
+		"name; without this, the\n"
+		"                          address is discovered from a "
+		"neighbor's LLDP TLV\n"
 		"  --lldp-interval SECS    LLDP TX cadence (default 30)\n"
 		"  --lldp-ttl SECS         LLDP TTL we advertise (default "
 		"120)\n"
@@ -147,7 +147,7 @@ int app_cfg_parse(struct app_cfg *c, int argc, char **argv)
 				*colon = '\0';
 				c->broker_port = atoi(colon + 1);
 			}
-			snprintf(c->broker_ip, sizeof c->broker_ip, "%s",
+			snprintf(c->broker_host, sizeof c->broker_host, "%s",
 				 argv[i]);
 		} else if (!strcmp(a, "--lldp-interval")) {
 			NEED_ARG();
