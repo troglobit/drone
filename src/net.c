@@ -2,6 +2,7 @@
  * net.c - argument parsing and lwIP/interface bring-up.
  */
 #include <ctype.h>
+#include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -67,129 +68,175 @@ static void usage(const char *argv0)
 {
 	fprintf(stderr,
 		"usage: %s [options]\n"
-		"  --localaddr HOST:PORT   bind the link UDP socket here "
+		"      --localaddr HOST:PORT  bind the link UDP socket here "
 		"(default 127.0.0.1:20000)\n"
-		"  --udp HOST:PORT         send frames to this peer "
+		"      --udp HOST:PORT        send frames to this peer "
 		"(default 127.0.0.1:20001)\n"
-		"  --ip ADDR               static IPv4 address (omit -> "
+		"      --ip ADDR              static IPv4 address (omit -> "
 		"AutoIP, or --dhcp)\n"
-		"  --dhcp                  request a DHCP lease; AutoIP "
+		"      --dhcp                 request a DHCP lease; AutoIP "
 		"fallback if no server\n"
-		"  --netmask ADDR          (default 255.255.255.0, used with "
-		"--ip)\n"
-		"  --gw ADDR               default gateway (default 10.0.0.1, "
-		"used with --ip)\n"
-		"  --mac XX:XX:XX:XX:XX:XX  interface MAC (default "
+		"      --netmask ADDR         (default 255.255.255.0, used "
+		"with --ip)\n"
+		"      --gw ADDR              default gateway (default "
+		"10.0.0.1, used with --ip)\n"
+		"      --mac XX:XX:XX:XX:XX:XX  interface MAC (default "
 		"02:00:00:00:00:02)\n"
-		"  --hostname NAME         device id / role (default: "
+		"      --hostname NAME        device id / role (default: "
 		"drone-XXYYZZ from MAC)\n"
-		"  --broker ADDR[:PORT]    MQTT broker as IPv4 or *.local "
+		"      --broker ADDR[:PORT]   MQTT broker as IPv4 or *.local "
 		"name; without this, the\n"
-		"                          address is discovered from a "
+		"                             address is discovered from a "
 		"neighbor's LLDP TLV\n"
-		"  --lldp-interval SECS    LLDP TX cadence (default 30)\n"
-		"  --lldp-ttl SECS         LLDP TTL we advertise (default "
+		"      --lldp-interval SECS   LLDP TX cadence (default 30)\n"
+		"      --lldp-ttl SECS        LLDP TTL we advertise (default "
 		"120)\n"
-		"  --run-broker            act as the built-in test broker "
+		"      --run-broker           act as the built-in test broker "
 		"instead\n"
-		"  --no-mqtt               skip the MQTT client (diagnostics "
-		"only)\n"
-		"  --ping ADDR [COUNT]     send ICMP echo requests after "
-		"bring-up\n",
+		"      --no-mqtt              skip the MQTT client "
+		"(diagnostics only)\n"
+		"  -p, --ping ADDR            send ICMP echo requests after "
+		"bring-up\n"
+		"  -n, --ping-count NUM       echo-request count (default "
+		"4)\n"
+		"  -h, --help                 this help\n",
 		argv0);
 }
 
+/* Long-only option keys.  Values >= 256 stay out of the short-option char
+ * range so getopt_long returns them directly via its int return. */
+enum {
+	OPT_LOCALADDR = 0x100,
+	OPT_UDP,
+	OPT_IP,
+	OPT_NETMASK,
+	OPT_GW,
+	OPT_MAC,
+	OPT_HOSTNAME,
+	OPT_DHCP,
+	OPT_BROKER,
+	OPT_LLDP_INTERVAL,
+	OPT_LLDP_TTL,
+	OPT_RUN_BROKER,
+	OPT_NO_MQTT,
+};
+
 int app_cfg_parse(struct app_cfg *c, int argc, char **argv)
 {
-	for (int i = 1; i < argc; i++) {
-		const char *a = argv[i];
-#define NEED_ARG()                                                             \
-	do {                                                                   \
-		if (++i >= argc) {                                             \
-			usage(argv[0]);                                        \
-			return -1;                                             \
-		}                                                              \
-	} while (0)
+	static const struct option long_opts[] = {
+		{ "localaddr",	   required_argument, NULL, OPT_LOCALADDR },
+		{ "udp",	   required_argument, NULL, OPT_UDP },
+		{ "ip",		   required_argument, NULL, OPT_IP },
+		{ "netmask",	   required_argument, NULL, OPT_NETMASK },
+		{ "gw",		   required_argument, NULL, OPT_GW },
+		{ "mac",	   required_argument, NULL, OPT_MAC },
+		{ "hostname",	   required_argument, NULL, OPT_HOSTNAME },
+		{ "dhcp",	   no_argument,	      NULL, OPT_DHCP },
+		{ "broker",	   required_argument, NULL, OPT_BROKER },
+		{ "lldp-interval", required_argument, NULL, OPT_LLDP_INTERVAL },
+		{ "lldp-ttl",	   required_argument, NULL, OPT_LLDP_TTL },
+		{ "run-broker",	   no_argument,	      NULL, OPT_RUN_BROKER },
+		{ "no-mqtt",	   no_argument,	      NULL, OPT_NO_MQTT },
+		{ "ping",	   required_argument, NULL, 'p' },
+		{ "ping-count",	   required_argument, NULL, 'n' },
+		{ "help",	   no_argument,	      NULL, 'h' },
+		{ 0, 0, 0, 0 }
+	};
+	int opt;
 
-		if (!strcmp(a, "--localaddr")) {
-			NEED_ARG();
+	/* Allow the function to be called repeatedly in tests / future code:
+	 * glibc keeps optind across calls otherwise. */
+	optind = 1;
+
+	while ((opt = getopt_long(argc, argv, "hp:n:", long_opts, NULL)) !=
+	       -1) {
+		switch (opt) {
+		case OPT_LOCALADDR:
 			snprintf(c->localaddr, sizeof c->localaddr, "%s",
-				 argv[i]);
-		} else if (!strcmp(a, "--udp")) {
-			NEED_ARG();
-			snprintf(c->peeraddr, sizeof c->peeraddr, "%s",
-				 argv[i]);
-		} else if (!strcmp(a, "--ip")) {
-			NEED_ARG();
-			snprintf(c->ip, sizeof c->ip, "%s", argv[i]);
-		} else if (!strcmp(a, "--netmask")) {
-			NEED_ARG();
-			snprintf(c->netmask, sizeof c->netmask, "%s", argv[i]);
-		} else if (!strcmp(a, "--gw")) {
-			NEED_ARG();
-			snprintf(c->gw, sizeof c->gw, "%s", argv[i]);
-		} else if (!strcmp(a, "--hostname")) {
-			NEED_ARG();
-			snprintf(c->hostname, sizeof c->hostname, "%s",
-				 argv[i]);
-		} else if (!strcmp(a, "--mac")) {
-			NEED_ARG();
-			if (parse_mac(argv[i], c->mac) != 0) {
+				 optarg);
+			break;
+		case OPT_UDP:
+			snprintf(c->peeraddr, sizeof c->peeraddr, "%s", optarg);
+			break;
+		case OPT_IP:
+			snprintf(c->ip, sizeof c->ip, "%s", optarg);
+			break;
+		case OPT_NETMASK:
+			snprintf(c->netmask, sizeof c->netmask, "%s", optarg);
+			break;
+		case OPT_GW:
+			snprintf(c->gw, sizeof c->gw, "%s", optarg);
+			break;
+		case OPT_MAC:
+			if (parse_mac(optarg, c->mac) != 0) {
 				fprintf(stderr, "bad --mac\n");
 				return -1;
 			}
-		} else if (!strcmp(a, "--dhcp")) {
+			break;
+		case OPT_HOSTNAME:
+			snprintf(c->hostname, sizeof c->hostname, "%s", optarg);
+			break;
+		case OPT_DHCP:
 			c->dhcp = 1;
-		} else if (!strcmp(a, "--run-broker")) {
-			c->is_broker = 1;
-		} else if (!strcmp(a, "--no-mqtt")) {
-			c->no_mqtt = 1;
-		} else if (!strcmp(a, "--broker")) {
-			char *colon;
-			NEED_ARG();
-			colon = strrchr(argv[i], ':');
+			break;
+		case OPT_BROKER: {
+			char *colon = strrchr(optarg, ':');
+
 			if (colon != NULL) {
 				*colon = '\0';
 				c->broker_port = atoi(colon + 1);
 			}
 			snprintf(c->broker_host, sizeof c->broker_host, "%s",
-				 argv[i]);
-		} else if (!strcmp(a, "--lldp-interval")) {
-			NEED_ARG();
-			c->lldp_interval = atoi(argv[i]);
+				 optarg);
+			break;
+		}
+		case OPT_LLDP_INTERVAL:
+			c->lldp_interval = atoi(optarg);
 			if (c->lldp_interval < 1) {
 				fprintf(stderr,
 					"--lldp-interval must be >= 1 (got '%s')\n",
-					argv[i]);
+					optarg);
 				return -1;
 			}
-		} else if (!strcmp(a, "--lldp-ttl")) {
-			NEED_ARG();
-			c->lldp_ttl = atoi(argv[i]);
+			break;
+		case OPT_LLDP_TTL:
+			c->lldp_ttl = atoi(optarg);
 			if (c->lldp_ttl < 1) {
 				fprintf(stderr,
 					"--lldp-ttl must be >= 1 (got '%s')\n",
-					argv[i]);
+					optarg);
 				return -1;
 			}
-		} else if (!strcmp(a, "--ping")) {
-			NEED_ARG();
+			break;
+		case OPT_RUN_BROKER:
+			c->is_broker = 1;
+			break;
+		case OPT_NO_MQTT:
+			c->no_mqtt = 1;
+			break;
+		case 'p':
 			snprintf(c->ping_target, sizeof c->ping_target, "%s",
-				 argv[i]);
+				 optarg);
 			c->do_ping = 1;
-			if ((i + 1 < argc) && (argv[i + 1][0] != '-')) {
-				c->ping_count = atoi(argv[++i]);
-			}
-		} else if (!strcmp(a, "-h") || !strcmp(a, "--help")) {
+			break;
+		case 'n':
+			c->ping_count = atoi(optarg);
+			break;
+		case 'h':
 			usage(argv[0]);
 			return -1;
-		} else {
-			fprintf(stderr, "unknown option: %s\n", a);
+		default:
+			/* getopt_long already printed a diagnostic for
+			 * unknown options and missing required arguments. */
 			usage(argv[0]);
 			return -1;
 		}
+	}
 
-#undef NEED_ARG
+	if (optind < argc) {
+		fprintf(stderr, "unexpected argument: %s\n", argv[optind]);
+		usage(argv[0]);
+		return -1;
 	}
 
 	return 0;

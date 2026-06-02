@@ -21,7 +21,8 @@ drone_run_bg --localaddr 127.0.0.1:20001 --udp 127.0.0.1:20000 \
 timeout "$((COUNT + 4))" \
     "$BIN" --localaddr 127.0.0.1:20000 --udp 127.0.0.1:20001 \
            --ip 10.0.0.2 --mac 02:00:00:00:00:02 --hostname pinger \
-           --no-mqtt --ping 10.0.0.1 "$COUNT" > "$PINGLOG" 2>&1 || true
+           --no-mqtt --ping 10.0.0.1 --ping-count "$COUNT" \
+           > "$PINGLOG" 2>&1 || true
 
 if grep -qE "ping: $COUNT sent, $COUNT received, 0% loss" "$PINGLOG"; then
     echo "PASS: pair $COUNT/$COUNT echoes round-tripped"
