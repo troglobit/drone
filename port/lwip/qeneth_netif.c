@@ -135,9 +135,9 @@ static err_t qn_netif_init(struct netif *netif)
 #if LWIP_IPV6 && LWIP_IPV6_MLD
 	netif->flags |= NETIF_FLAG_MLD6;
 #endif
-#if LWIP_NETIF_HOSTNAME
-	netif->hostname = "drone";
-#endif
+	/* netif->hostname is left for the caller (net.c) to wire up from the
+	 * runtime --hostname.  lwIP's DHCP client uses it for option 12, so
+	 * setting it per-instance lets dnsmasq match each drone individually. */
 	return ERR_OK;
 }
 

@@ -34,11 +34,20 @@ The device attaches to one UDP-socket link (mirroring QEMU's
 ```
 --localaddr HOST:PORT   bind the link socket here   (default 127.0.0.1:20000)
 --udp HOST:PORT         send frames to this peer    (default 127.0.0.1:20001)
---ip / --netmask / --gw static IPv4 (omit --ip to claim a 169.254/16 via AutoIP)
+--ip / --netmask / --gw static IPv4 (omit --ip for AutoIP, or --dhcp)
+--dhcp                  request a DHCP lease; AutoIP fallback if no server
 --mac XX:..             interface MAC               (default 02:00:00:00:00:02)
 --hostname NAME         device id / role            (default: drone-XXYYZZ from MAC)
 --ping ADDR [COUNT]     send ICMP echo after bring-up (built-in diagnostic)
 ```
+
+With `--dhcp` the device requests a lease from a DHCP server on the L2;
+`--hostname` is advertised as DHCP option 12 (Host Name) so a server like
+dnsmasq can hand out a static lease keyed on the drone name
+(`dhcp-host=drone-north-pump,10.0.0.50`).  RFC 3927 cooperative AutoIP
+takes over after two failed DHCP tries (~12 s) if no server answers, so
+`--dhcp` is safe to set unconditionally — the drone still comes up on
+169.254/16 in an isolated lab.
 
 Each interface also acquires an IPv6 link-local (`fe80::EUI64`) on bring-up,
 derived from the MAC, and the device announces itself via mDNS as

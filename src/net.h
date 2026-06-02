@@ -15,7 +15,9 @@ struct app_cfg {
 	char netmask[16];
 	char gw[16];
 	uint8_t mac[6];
-	char hostname[32]; /* also used as the MQTT client/device id     */
+	char hostname[32]; /* also used as the MQTT client/device id and
+			    * the DHCP option 12 the server matches on  */
+	int dhcp;	   /* try DHCP before falling back to AutoIP    */
 
 	/* MQTT broker, IPv4 dotted-decimal or *.local hostname; empty ->
 	 * discover via LLDP.  Sized for a .local FQDN. */

@@ -44,7 +44,11 @@
 #define MEMP_NUM_TCP_PCB                8
 #define MEMP_NUM_TCP_PCB_LISTEN         4
 #define MEMP_NUM_TCP_SEG                32
-#define MEMP_NUM_SYS_TIMEOUT            16
+/* Timer-pool sizing: lwIP's internal count = LWIP_TCP + LWIP_ARP + 2*LWIP_DHCP
+ * + LWIP_AUTOIP + LWIP_IGMP + LWIP_IPV6*(1 + LWIP_IPV6_REASS + LWIP_IPV6_MLD)
+ * = 1+1+2+1+1+3 = 9; mDNS responder + MQTT TCP retransmits + LLDP TX timer
+ * eat several more in steady state, so leave generous slack. */
+#define MEMP_NUM_SYS_TIMEOUT            24
 #define PBUF_POOL_SIZE                  32
 #define PBUF_POOL_BUFSIZE               1536
 
@@ -70,8 +74,13 @@
 #define LWIP_MDNS_RESPONDER             1      /* announce <hostname>.local */
 #define MDNS_MAX_SERVICES               1
 #define LWIP_NUM_NETIF_CLIENT_DATA      1      /* required by apps/mdns */
-#define LWIP_DHCP                       0
+#define LWIP_DHCP                       1
 #define LWIP_AUTOIP                     1      /* RFC 3927 v4 link-local */
+/* RFC 3927 cooperative mode: dhcp_start() probes for a server and falls back
+ * to AutoIP if none responds.  TRIES kept low so the AutoIP fallback engages
+ * quickly when --dhcp is set but the lab has no DHCP server. */
+#define LWIP_DHCP_AUTOIP_COOP           1
+#define LWIP_DHCP_AUTOIP_COOP_TRIES     2
 #define LWIP_DNS                        0
 #define LWIP_IGMP                       1      /* v4 multicast (mDNS later) */
 #define LWIP_NETIF_HOSTNAME             1

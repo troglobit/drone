@@ -14,6 +14,7 @@
 #include "lwip/netif.h"
 #include "lwip/ip4_addr.h"
 #include "lwip/autoip.h"
+#include "lwip/dhcp.h"
 
 #include "net.h"
 #include "ping.h"
@@ -71,7 +72,9 @@ static void usage(const char *argv0)
 		"  --udp HOST:PORT         send frames to this peer "
 		"(default 127.0.0.1:20001)\n"
 		"  --ip ADDR               static IPv4 address (omit -> "
-		"AutoIP)\n"
+		"AutoIP, or --dhcp)\n"
+		"  --dhcp                  request a DHCP lease; AutoIP "
+		"fallback if no server\n"
 		"  --netmask ADDR          (default 255.255.255.0, used with "
 		"--ip)\n"
 		"  --gw ADDR               default gateway (default 10.0.0.1, "
@@ -135,6 +138,8 @@ int app_cfg_parse(struct app_cfg *c, int argc, char **argv)
 				fprintf(stderr, "bad --mac\n");
 				return -1;
 			}
+		} else if (!strcmp(a, "--dhcp")) {
+			c->dhcp = 1;
 		} else if (!strcmp(a, "--run-broker")) {
 			c->is_broker = 1;
 		} else if (!strcmp(a, "--no-mqtt")) {
@@ -197,6 +202,15 @@ void app_cfg_finalize(struct app_cfg *c)
 	if (c->hostname[0] == '\0') {
 		snprintf(c->hostname, sizeof c->hostname, "drone-%02x%02x%02x",
 			 c->mac[3], c->mac[4], c->mac[5]);
+	}
+
+	/* --ip overrides any address-acquisition mechanism; --dhcp is moot
+	 * if the address is already fixed. */
+	if ((c->ip[0] != '\0') && c->dhcp) {
+		fprintf(stderr,
+			"drone: --ip and --dhcp are mutually exclusive; "
+			"ignoring --dhcp\n");
+		c->dhcp = 0;
 	}
 }
 
@@ -346,7 +360,18 @@ int net_start(const struct app_cfg *c)
 		return -1;
 	}
 
-	if (autoip) {
+	/* lwIP's DHCP client includes option 12 (Host Name) when
+	 * netif->hostname is set; static leases keyed on hostname (dnsmasq
+	 * dhcp-host=NAME,IP) then identify the drone by --hostname. */
+	s_netif.hostname = c->hostname;
+
+	if (c->dhcp) {
+		LOCK_TCPIP_CORE();
+		dhcp_start(&s_netif);
+		UNLOCK_TCPIP_CORE();
+		printf("drone: interface up (DHCP%s), awaiting lease...\n",
+		       LWIP_DHCP_AUTOIP_COOP ? " + AutoIP fallback" : "");
+	} else if (autoip) {
 		LOCK_TCPIP_CORE();
 		autoip_start(&s_netif);
 		UNLOCK_TCPIP_CORE();

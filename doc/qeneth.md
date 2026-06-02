@@ -56,10 +56,14 @@ so the generated command line works unchanged.
 | `qn_broker`  | *(none, LLDP)*   | MQTT broker; omit to discover via LLDP    |
 | `qn_extra`   | *(none)*         | extra flags, e.g. `--run-broker`          |
 
-> If `qn_ip` is set, the drone uses that static address; otherwise it claims a
-> link-local 169.254/16 address via AutoIP (RFC 3927). DHCP is not built in
-> yet — enable `LWIP_DHCP` if you need it. The netif also obtains an IPv6
-> `fe80::EUI64` link-local automatically (SLAAC, derived from the MAC).
+> If `qn_ip` is set, the drone uses that static address; otherwise it
+> claims a link-local 169.254/16 address via AutoIP (RFC 3927).  Pass
+> `--dhcp` (via `qn_extra="--dhcp"`) to request a DHCP lease instead --
+> the drone's `--hostname` is sent as option 12 so a server can hand out
+> a static lease keyed on the name; cooperative AutoIP still kicks in
+> after ~12 s if no server answers, so `--dhcp` is harmless in labs
+> without one.  The netif also obtains an IPv6 `fe80::EUI64` link-local
+> automatically (SLAAC, derived from the MAC).
 
 ## Where the broker lives
 
