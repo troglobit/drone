@@ -1,82 +1,53 @@
-# drone: a simple FreeRTOS + MQTT end-device
+# drone
 
-A small FreeRTOS networking end-device for running as a node in a [qeneth][1]
-virtual-network lab alongside [Infix][2] OS instances.  It speaks MQTT:
-publishing test patterns and responds to a handful of commands.
+A FreeRTOS + lwIP MQTT end-device.  POSIX today, Cortex-M7 (NXP
+S32K3) later.
 
-qeneth wires QEMU instances together with `-netdev socket,udp=…` links (one
-raw Ethernet frame per UDP datagram), and a node's launcher can be anything.
-So `drone` joins a topology as a plain process: a custom lwIP network
-interface opens the UDP socket pair qeneth assigns and moves L2 frames over
-it.  For details, see [doc/qeneth.md][3].
+The device publishes JSON telemetry on `dev/<id>/telemetry`,
+subscribes to `dev/<id>/cmd`, and answers on `dev/<id>/resp`.
+Address acquisition goes through `--ip`, `--dhcp`, or AutoIP; the
+broker is either set with `--broker` or discovered via LLDP.
 
-```
-   drone (this repo)                  broker node (Infix VM)
-  ┌────────────────────────────┐     ┌────────────────────────┐
-  │ FreeRTOS POSIX port + lwIP │ L2  │ mosquitto              │
-  │ + lwIP apps/mqtt           │◀═══▶│                        │
-  │ custom UDP-socket netif    │ UDP │ … more Infix nodes …   │
-  └────────────────────────────┘     └────────────────────────┘
-```
-
-## Build & Run
+## Build
 
 ```sh
-git clone --recurse-submodules <this-repo>   # or: git submodule update --init
+git clone --recurse-submodules <this-repo>
 make
-./build/drone --help
-make check                                   # run the self-tests (autotools style)
+make check          # self-tests
 ```
 
-The device attaches to one UDP-socket link (mirroring QEMU's
-`-netdev socket,udp=PEER,localaddr=LOCAL`) and takes a static IPv4 config:
+`./build/drone --help` prints the full flag set.
 
-```
---localaddr HOST:PORT   bind the link socket here   (default 127.0.0.1:20000)
---udp HOST:PORT         send frames to this peer    (default 127.0.0.1:20001)
---ip / --netmask / --gw static IPv4 (omit --ip for AutoIP, or --dhcp)
---dhcp                  request a DHCP lease; AutoIP fallback if no server
---lldp                  enable LLDP TX/RX; gates --dhcp on first neighbor
-                        frame; enables MQTT broker discovery from mgmt-addr
---mac XX:..             interface MAC               (default 02:00:00:00:00:02)
---hostname NAME         device id / role            (default: drone-XXYYZZ from MAC)
---ping ADDR [COUNT]     send ICMP echo after bring-up (built-in diagnostic)
-```
+## Run
 
-With `--dhcp` the device requests a lease from a DHCP server on the L2;
-`--hostname` is advertised as DHCP option 12 (Host Name) so a server like
-dnsmasq can hand out a static lease keyed on the drone name
-(`dhcp-host=drone-north-pump,10.0.0.50`).
+Drone sits on one end of a UDP-socket link.  The other end can be a
+sibling drone (see [test/mqtt.sh][3] or [test/pair.sh][5]) or a
+[qeneth][1] topology -- see [doc/qeneth.md][4] for the qeneth side.
 
-Pair `--dhcp` with `--lldp` to **gate** DISCOVER on the first peer
-LLDPDU: drone waits for that frame before calling `dhcp_start`, which
-avoids burning the early retries in lwIP's exponential backoff against
-a Linux/Infix peer that takes 20-60 s to bring up `dhcpd`.  Once the
-peer's `lldpd` starts emitting frames, drone knows the network stack
-is up and immediately attempts DHCP.
-
-`--dhcp` *without* `--lldp` starts DISCOVER immediately, with RFC 3927
-cooperative AutoIP fallback after ~12 s — the right choice for segments
-where the upstream doesn't speak 802.1AB at all.
-
-Each interface also acquires an IPv6 link-local (`fe80::EUI64`) on bring-up,
-derived from the MAC, and the device announces itself via mDNS as
-`<hostname>.local` plus a `_drone._tcp` service so a CNC can browse for it.
-The device answers ICMP echo on its own, so any peer can `ping` it.  For a
-check without qeneth, run two instances back to back:
+Static IP plus an explicit broker:
 
 ```sh
-test/pair.sh 3
-# ping 10.0.0.1: 3 request(s)
-# ping: reply from 10.0.0.1: seq=1 time=2 ms
-# ...
-# ping: 3 sent, 3 received, 0% loss
+./build/drone --ip 10.0.0.2 --broker 10.0.0.1:1883 --hostname dev01
 ```
 
-### MQTT
+With an [Infix][2] switch upstream, drone can find both its own
+address and the broker on its own.  It waits for an LLDP frame,
+asks for a DHCP lease, and reads the broker IP from the neighbor's
+Management-Address TLV:
 
-The device publishes JSON telemetry on `dev/<id>/telemetry`, subscribes to
-`dev/<id>/cmd`, and replies on `dev/<id>/resp`. Commands:
+```sh
+./build/drone --dhcp --lldp --hostname dev01
+```
+
+When the broker advertises itself by mDNS:
+
+```sh
+./build/drone --ip 10.0.0.2 --broker broker1.local --hostname dev01
+```
+
+## MQTT commands
+
+The broker drives the device on `dev/<id>/cmd`:
 
 | command                               | description                                           |
 |---------------------------------------|-------------------------------------------------------|
@@ -87,61 +58,18 @@ The device publishes JSON telemetry on `dev/<id>/telemetry`, subscribes to
 | `led <on\|off>`                       | toggle the (stubbed) LED, reflected in telemetry      |
 | `reboot`                              | acknowledged (no-op in the simulator)                 |
 
-For a demo without an external broker, one instance runs a built-in minimal
-test broker (`--run-broker`) that drives a command sequence:
-
-```sh
-test/mqtt.sh
-# test-broker: <- [dev/dev01/telemetry] {"seq":6,"val":183,"pattern":"sine","led":0}
-# test-broker: -> cmd "led on"
-# test-broker: <- [dev/dev01/resp] led=on
-```
-
-`--lldp` is the master switch for all LLDP-derived behaviour: when set,
-drone sends and receives 802.1AB frames, gates `--dhcp` startup on the
-first neighbor frame, and (when `--broker` is omitted) takes the broker
-IPv4 from the neighbor's Management-Address TLV.  Drone also shows up
-in each switch's `lldpcli show neighbors` output, which doubles as a
-free fleet inventory.
-
-`--broker ADDR[:PORT]` is the explicit override.  ADDR is either an
-IPv4 dotted-decimal or a `*.local` hostname that drone resolves via
-mDNS (one-shot A-record query with the QU bit, see
-[src/mdns_resolve.c][4]).  Without `--broker`, drone requires `--lldp`
-so it has *some* discovery channel; otherwise it refuses to start the
-MQTT client with `no --broker given and --lldp not set`.
-
-With `--lldp --broker host:port` the broker is explicit but LLDP still
-runs for inventory purposes; with `--broker host:port` alone, LLDP is
-off entirely and the netif acts exactly like a non-LLDP device.
-
 ## Layout
 
-| Path                            | Description                                            |
-|---------------------------------|--------------------------------------------------------|
-| doc/qeneth.md                   | how to run drone as a qeneth node                      |
-| doc/porting.md                  | notes for porting to Cortex-M7 / S32K3                 |
-| include/FreeRTOSConfig.h        | FreeRTOS config for the POSIX port                     |
-| lib/FreeRTOS-Kernel             | submodule, pinned V11.3.0                              |
-| lib/lwip                        | submodule, pinned STABLE-2_2_1_RELEASE (incl. contrib) |
-| port/lwip/lwipopts.h            | lwIP options; arch/cc.h is the platform shim           |
-| port/lwip/qeneth_netif.c        | custom lwIP netif over a host UDP socket               |
-| port/lwip/raw_ethertype.c       | EtherType dispatch (LLDP consumes 0x88CC before IP)    |
-| qeneth/templates/drone.mustache | qeneth node launcher template                          |
-| qeneth/topology.dot.in          | example qeneth topology                                |
-| src/main.c                      | entry: parse args, start scheduler                     |
-| src/net.c                       | config + lwIP/interface bring-up                       |
-| src/ping.c                      | built-in ICMP echo diagnostic                          |
-| src/mqtt_app.c                  | MQTT client: telemetry + command handling              |
-| src/lldp.c                      | LLDP TX/RX; broker addr from neighbor Management TLV   |
-| src/mdns_resolve.c              | one-shot mDNS A-record querier (`*.local` -> IPv4)     |
-| src/test_broker.c               | minimal MQTT broker test fixture (--run-broker)        |
-| test/                           | self-test scripts (one per slice); test.mk is included |
-| utils/drone.sh                  | shared shell helpers (drone_require_bin, drone_run_bg) |
-| utils/lldp_frame.py             | synthetic LLDP injector (for negative/edge-case tests) |
-| Makefile / .clang-format        | gcc + make build, plus `make fmt` for Linux KNF        |
+| Path        | Description                                            |
+|-------------|--------------------------------------------------------|
+| src/        | application (main, MQTT, LLDP, mDNS, ping)             |
+| port/lwip/  | lwIP port glue (UDP-socket netif, EtherType dispatch)  |
+| lib/        | pinned FreeRTOS-Kernel + lwIP submodules               |
+| doc/        | qeneth integration, porting notes                      |
+| test/       | self-tests run by `make check`                         |
 
 [1]: https://github.com/wkz/qeneth
 [2]: https://github.com/kernelkit/infix
-[3]: doc/qeneth.md
-[4]: src/mdns_resolve.c
+[3]: test/mqtt.sh
+[4]: doc/qeneth.md
+[5]: test/pair.sh
