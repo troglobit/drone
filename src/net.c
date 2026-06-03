@@ -19,6 +19,7 @@
 
 #include "net.h"
 #include "ping.h"
+#include "lldp.h"
 #include "qeneth_netif.h"
 
 static struct netif s_netif;
@@ -88,6 +89,10 @@ static void usage(const char *argv0)
 		"name; without this, the\n"
 		"                             address is discovered from a "
 		"neighbor's LLDP TLV\n"
+		"      --lldp                 enable LLDP TX/RX; gate "
+		"--dhcp start on first neighbor\n"
+		"                             frame; discover MQTT broker "
+		"from mgmt-address TLV\n"
 		"      --lldp-interval SECS   LLDP TX cadence (default 30)\n"
 		"      --lldp-ttl SECS        LLDP TTL we advertise (default "
 		"120)\n"
@@ -115,6 +120,7 @@ enum {
 	OPT_HOSTNAME,
 	OPT_DHCP,
 	OPT_BROKER,
+	OPT_LLDP,
 	OPT_LLDP_INTERVAL,
 	OPT_LLDP_TTL,
 	OPT_RUN_BROKER,
@@ -133,6 +139,7 @@ int app_cfg_parse(struct app_cfg *c, int argc, char **argv)
 		{ "hostname",	   required_argument, NULL, OPT_HOSTNAME },
 		{ "dhcp",	   no_argument,	      NULL, OPT_DHCP },
 		{ "broker",	   required_argument, NULL, OPT_BROKER },
+		{ "lldp",	   no_argument,	      NULL, OPT_LLDP },
 		{ "lldp-interval", required_argument, NULL, OPT_LLDP_INTERVAL },
 		{ "lldp-ttl",	   required_argument, NULL, OPT_LLDP_TTL },
 		{ "run-broker",	   no_argument,	      NULL, OPT_RUN_BROKER },
@@ -190,6 +197,9 @@ int app_cfg_parse(struct app_cfg *c, int argc, char **argv)
 				 optarg);
 			break;
 		}
+		case OPT_LLDP:
+			c->lldp = 1;
+			break;
 		case OPT_LLDP_INTERVAL:
 			c->lldp_interval = atoi(optarg);
 			if (c->lldp_interval < 1) {
@@ -324,6 +334,24 @@ static int open_link_socket(const char *localaddr)
 	return fd;
 }
 
+/* Fired (from the LLDP RX-task context) when the first neighbor LLDPDU
+ * arrives, gating the DHCP DISCOVER on "the upstream is at least alive
+ * enough to send LLDP".  Fires exactly once because lldp.c latches
+ * s_any_neighbor_seen on first frame -- important, because lwIP's
+ * dhcp_start() on a netif that already has DHCP running tears it down
+ * and restarts (memset + DISCOVER), so calling it twice would blow
+ * away an established lease. */
+static void start_dhcp_on_lldp(void)
+{
+	LOCK_TCPIP_CORE();
+	dhcp_start(&s_netif);
+	UNLOCK_TCPIP_CORE();
+	/* Log after releasing the core lock: printf can briefly block on
+	 * a piped stdout and we don't want to stall the tcpip thread (or
+	 * the qn_rx_task that's running us) any longer than needed. */
+	printf("drone: LLDP neighbor seen, starting DHCP\n");
+}
+
 /* lwIP fires this callback when the netif's IPv4 address becomes valid;
  * with AutoIP, that's after the probe-and-claim cycle completes. */
 NETIF_DECLARE_EXT_CALLBACK(s_ext_cb)
@@ -400,19 +428,36 @@ int net_start(const struct app_cfg *c)
 	netif_add_ext_callback(&s_ext_cb, on_netif_ext);
 	UNLOCK_TCPIP_CORE();
 
-	if (qeneth_netif_add(&s_netif, &ip, &mask, &gw, c->mac, fd,
-			     peer.sin_addr.s_addr, peer.sin_port) != ERR_OK) {
+	/* Pre-register the LLDP-gated DHCP trigger BEFORE qeneth_netif_add
+	 * spawns qn_rx_task, so a peer's first 802.1AB frame can't slip
+	 * past the dispatch loop with a NULL callback slot. */
+	if (c->dhcp && c->lldp) {
+		lldp_on_neighbor_seen(start_dhcp_on_lldp);
+	}
+
+	/* Pass --hostname through to the netif init path so netif->hostname
+	 * is set before qeneth_netif_add returns (and before its RX task can
+	 * dispatch a frame that fires start_dhcp_on_lldp).  lwIP's DHCP
+	 * client emits the name as option 12; static leases keyed on it
+	 * (dnsmasq dhcp-host=NAME,IP) then identify the drone. */
+	if (qeneth_netif_add(&s_netif, &ip, &mask, &gw, c->mac, c->hostname,
+			     fd, peer.sin_addr.s_addr,
+			     peer.sin_port) != ERR_OK) {
 		fprintf(stderr, "drone: failed to add interface\n");
 		close(fd);
 		return -1;
 	}
 
-	/* lwIP's DHCP client includes option 12 (Host Name) when
-	 * netif->hostname is set; static leases keyed on hostname (dnsmasq
-	 * dhcp-host=NAME,IP) then identify the drone by --hostname. */
-	s_netif.hostname = c->hostname;
-
-	if (c->dhcp) {
+	if (c->dhcp && c->lldp) {
+		/* Don't burn DHCP retries before the upstream Linux peer is
+		 * up; lldp_on_neighbor_seen (registered above) will call
+		 * dhcp_start the first time we hear a neighbor LLDPDU. */
+		printf("drone: interface up (DHCP, gated on LLDP "
+		       "neighbor)\n");
+	} else if (c->dhcp) {
+		/* No LLDP gating: start DHCP immediately.  RFC 3927
+		 * cooperative AutoIP fallback applies after
+		 * LWIP_DHCP_AUTOIP_COOP_TRIES failed DISCOVERs. */
 		LOCK_TCPIP_CORE();
 		dhcp_start(&s_netif);
 		UNLOCK_TCPIP_CORE();

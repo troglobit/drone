@@ -36,6 +36,8 @@ The device attaches to one UDP-socket link (mirroring QEMU's
 --udp HOST:PORT         send frames to this peer    (default 127.0.0.1:20001)
 --ip / --netmask / --gw static IPv4 (omit --ip for AutoIP, or --dhcp)
 --dhcp                  request a DHCP lease; AutoIP fallback if no server
+--lldp                  enable LLDP TX/RX; gates --dhcp on first neighbor
+                        frame; enables MQTT broker discovery from mgmt-addr
 --mac XX:..             interface MAC               (default 02:00:00:00:00:02)
 --hostname NAME         device id / role            (default: drone-XXYYZZ from MAC)
 --ping ADDR [COUNT]     send ICMP echo after bring-up (built-in diagnostic)
@@ -44,10 +46,18 @@ The device attaches to one UDP-socket link (mirroring QEMU's
 With `--dhcp` the device requests a lease from a DHCP server on the L2;
 `--hostname` is advertised as DHCP option 12 (Host Name) so a server like
 dnsmasq can hand out a static lease keyed on the drone name
-(`dhcp-host=drone-north-pump,10.0.0.50`).  RFC 3927 cooperative AutoIP
-takes over after two failed DHCP tries (~12 s) if no server answers, so
-`--dhcp` is safe to set unconditionally — the drone still comes up on
-169.254/16 in an isolated lab.
+(`dhcp-host=drone-north-pump,10.0.0.50`).
+
+Pair `--dhcp` with `--lldp` to **gate** DISCOVER on the first peer
+LLDPDU: drone waits for that frame before calling `dhcp_start`, which
+avoids burning the early retries in lwIP's exponential backoff against
+a Linux/Infix peer that takes 20-60 s to bring up `dhcpd`.  Once the
+peer's `lldpd` starts emitting frames, drone knows the network stack
+is up and immediately attempts DHCP.
+
+`--dhcp` *without* `--lldp` starts DISCOVER immediately, with RFC 3927
+cooperative AutoIP fallback after ~12 s — the right choice for segments
+where the upstream doesn't speak 802.1AB at all.
 
 Each interface also acquires an IPv6 link-local (`fe80::EUI64`) on bring-up,
 derived from the MAC, and the device announces itself via mDNS as
@@ -87,20 +97,23 @@ test/mqtt.sh
 # test-broker: <- [dev/dev01/resp] led=on
 ```
 
-By default the device discovers its broker over LLDP: a neighboring switch
-(or any LLDP-speaking peer) advertising a Management-Address TLV is taken
-to be the broker, and the device connects to that IPv4 on port 1883.
-Until a frame arrives the device logs `waiting for LLDP from neighboring
-MQTT broker` once every 10 s.  drone also sends its own LLDP frames every
-30 s so each switch shows it in `lldpcli show neighbors`, which doubles as
-a free fleet inventory.
+`--lldp` is the master switch for all LLDP-derived behaviour: when set,
+drone sends and receives 802.1AB frames, gates `--dhcp` startup on the
+first neighbor frame, and (when `--broker` is omitted) takes the broker
+IPv4 from the neighbor's Management-Address TLV.  Drone also shows up
+in each switch's `lldpcli show neighbors` output, which doubles as a
+free fleet inventory.
 
-`--broker ADDR[:PORT]` overrides discovery.  ADDR is either an IPv4 dotted-
-decimal or a `*.local` hostname that drone resolves via mDNS (one-shot
-A-record query with the QU bit, see [src/mdns_resolve.c][4]).  The wait
-loop retries indefinitely so a slow Linux/Infix peer that needs ~30 s to
-bring up `lldpd` or `avahi` is handled naturally — drone just keeps trying
-until the upstream answers.
+`--broker ADDR[:PORT]` is the explicit override.  ADDR is either an
+IPv4 dotted-decimal or a `*.local` hostname that drone resolves via
+mDNS (one-shot A-record query with the QU bit, see
+[src/mdns_resolve.c][4]).  Without `--broker`, drone requires `--lldp`
+so it has *some* discovery channel; otherwise it refuses to start the
+MQTT client with `no --broker given and --lldp not set`.
+
+With `--lldp --broker host:port` the broker is explicit but LLDP still
+runs for inventory purposes; with `--broker host:port` alone, LLDP is
+off entirely and the netif acts exactly like a non-LLDP device.
 
 ## Layout
 

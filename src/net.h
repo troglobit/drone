@@ -18,6 +18,9 @@ struct app_cfg {
 	char hostname[32]; /* also used as the MQTT client/device id and
 			    * the DHCP option 12 the server matches on  */
 	int dhcp;	   /* try DHCP before falling back to AutoIP    */
+	int lldp;	   /* opt-in master switch for LLDP TX/RX, the
+			    * DHCP gating on first neighbor frame, and
+			    * broker discovery via Management-Address TLV */
 
 	/* MQTT broker, IPv4 dotted-decimal or *.local hostname; empty ->
 	 * discover via LLDP.  Sized for a .local FQDN. */

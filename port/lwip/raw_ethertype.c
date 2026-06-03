@@ -30,11 +30,13 @@ bool raw_ethertype_register(uint16_t ethertype, raw_ethertype_fn handler)
 		return false;
 	}
 
-	/* qn_rx_task is already running by the time we get here, so guard the
-	 * scan + publish against a concurrent dispatch.  Writing fn before
-	 * ethertype (above) means a reader that observes ethertype != 0 also
-	 * sees a fully-initialized fn pointer; the critical section closes
-	 * the window even on weakly-ordered targets. */
+	/* With the lldp_register/lldp_start phase split the first caller
+	 * now registers BEFORE qn_rx_task is created, so there's no
+	 * concurrent dispatch the first time; the critical section still
+	 * guards against a (currently hypothetical) second registrant
+	 * coming in after the netif is up.  Writing fn before ethertype
+	 * means a reader that observes ethertype != 0 also sees a
+	 * fully-initialized fn pointer on weakly-ordered targets. */
 	taskENTER_CRITICAL();
 	for (int i = 0; i < MAX_HANDLERS; i++) {
 		if (s_handlers[i].ethertype == ethertype) {

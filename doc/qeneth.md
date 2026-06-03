@@ -53,34 +53,42 @@ so the generated command line works unchanged.
 | `qn_bin`     | `drone` (PATH)   | path to the binary                        |
 | `qn_ip`      | *(none, AutoIP)* | static IPv4 address; omit for AutoIP      |
 | `qn_gw`      | *(none, AutoIP)* | default gateway                           |
-| `qn_broker`  | *(none, LLDP)*   | MQTT broker; omit to discover via LLDP    |
+| `qn_broker`  | *(none)*         | MQTT broker; omit only with `--lldp`      |
 | `qn_extra`   | *(none)*         | extra flags, e.g. `--run-broker`          |
 
 > If `qn_ip` is set, the drone uses that static address; otherwise it
 > claims a link-local 169.254/16 address via AutoIP (RFC 3927).  Pass
 > `--dhcp` (via `qn_extra="--dhcp"`) to request a DHCP lease instead --
-> the drone's `--hostname` is sent as option 12 so a server can hand out
-> a static lease keyed on the name; cooperative AutoIP still kicks in
-> after ~12 s if no server answers, so `--dhcp` is harmless in labs
-> without one.  The netif also obtains an IPv6 `fe80::EUI64` link-local
-> automatically (SLAAC, derived from the MAC).
+> the drone's `--hostname` is sent as option 12 so a server can hand
+> out a static lease keyed on the name.
+>
+> Adding `--lldp` (`qn_extra="--dhcp --lldp"`) **gates** DHCP on the
+> first peer LLDPDU, so drone doesn't burn the early DISCOVER retries
+> while a Linux peer is still booting (`lldpd` comes up shortly before
+> `dhcpd`, so by the time we hear an LLDP frame the DHCP server is
+> usually ready).  Without `--lldp`, `--dhcp` starts DISCOVER
+> immediately and falls back to AutoIP after the cooperative tries --
+> the right choice for segments without a 802.1AB-speaking upstream.
+> The netif also obtains an IPv6 `fe80::EUI64` link-local automatically
+> (SLAAC, derived from the MAC).
 
 ## Where the broker lives
 
-By default the device discovers its broker from LLDP: a neighbor advertising
-a Management-Address TLV is taken to be the broker, and the device connects
-to that IPv4 on port 1883.  Infix's `lldpd` advertises the node's mgmt IP
-out of the box, so no extra configuration is needed for the lab case.  Two
-common setups:
+With `--lldp` (via `qn_extra="--lldp"`) the device discovers its broker
+from a neighbor's Management-Address TLV and connects to that IPv4 on
+port 1883.  Infix's `lldpd` advertises the node's mgmt IP out of the
+box, so no extra configuration is needed for the lab case.  Two common
+setups:
 
 - Real broker (the lab default): run `mosquitto` on an Infix or other Linux
   node; its `lldpd` advertises the node's mgmt IP and drone picks it up
-  automatically.  This is the Dragnet setup.  Set `qn_broker` to override
-  (skips discovery), e.g. `qn_broker="10.0.0.1:1883"` while bringing things
-  up.
+  automatically -- set `qn_extra="--lldp"` on the drone node.  This is
+  the Dragnet setup.  Set `qn_broker` to override (skips discovery),
+  e.g. `qn_broker="10.0.0.1:1883"` while bringing things up.
 - Self-contained (no Infix or mosquitto): make the peer a second `drone` with
-  `qn_template="drone"`, `qn_extra="--run-broker"`, `qn_ip="10.0.0.1"`.  Both
-  drones send LLDP, the device side learns the broker IP and connects.
+  `qn_template="drone"`, `qn_extra="--run-broker --lldp"`, `qn_ip="10.0.0.1"`,
+  and `qn_extra="--lldp"` on the device side.  Both drones send LLDP, the
+  device learns the broker IP and connects.
 
 `qn_broker` accepts either an IPv4 dotted-decimal (`10.0.0.1:1883`) or a
 `*.local` hostname (`broker1.local:1883`).  Hostnames are resolved via a

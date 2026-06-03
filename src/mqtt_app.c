@@ -406,6 +406,13 @@ void mqtt_app_start(const struct app_cfg *cfg)
 			       cfg->broker_host);
 			return;
 		}
+	} else if (!cfg->lldp) {
+		/* No --broker and no --lldp: there's no discovery channel.
+		 * Refuse to start rather than spin the wait loop forever
+		 * looking for an LLDP frame that will never arrive. */
+		printf("mqtt: no --broker given and --lldp not set; "
+		       "broker discovery requires LLDP\n");
+		return;
 	}
 
 	snprintf(s_broker_host, sizeof s_broker_host, "%s", cfg->broker_host);

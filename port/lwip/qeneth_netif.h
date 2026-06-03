@@ -20,7 +20,7 @@
  */
 err_t qeneth_netif_add(struct netif *netif, const ip4_addr_t *ip,
 		       const ip4_addr_t *netmask, const ip4_addr_t *gw,
-		       const uint8_t mac[6], int sockfd, uint32_t peer_ip_be,
-		       uint16_t peer_port_be);
+		       const uint8_t mac[6], const char *hostname, int sockfd,
+		       uint32_t peer_ip_be, uint16_t peer_port_be);
 
 #endif /* QENETH_NETIF_H */

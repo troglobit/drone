@@ -62,6 +62,10 @@ static SemaphoreHandle_t s_addr_mutex;
 static ip_addr_t	 s_neighbor_addr;
 static bool		 s_have_addr;
 
+/* One-shot "first neighbor frame seen" notification (LLDP-gated DHCP). */
+static lldp_neighbor_seen_cb s_seen_cb;
+static bool		     s_any_neighbor_seen;
+
 /*------------------------------------------------------------------*/
 /* TLV encode helpers                                                */
 
@@ -296,6 +300,18 @@ static void lldp_rx_handler(struct pbuf *p, struct netif *netif)
 
 	LWIP_UNUSED_ARG(netif);
 
+	/* Fire the one-shot "neighbor seen" trigger before parsing -- even
+	 * a malformed LLDPDU proves an upstream is alive enough to send
+	 * 0x88CC frames, which is the signal callers want. */
+	if (!s_any_neighbor_seen) {
+		lldp_neighbor_seen_cb cb = s_seen_cb;
+
+		s_any_neighbor_seen = true;
+		if (cb != NULL) {
+			cb();
+		}
+	}
+
 	n = pbuf_copy_partial(p, buf, sizeof(buf), 0);
 	if (n >= 14) {
 		parse_lldpdu(buf, (int)n);
@@ -303,12 +319,23 @@ static void lldp_rx_handler(struct pbuf *p, struct netif *netif)
 	pbuf_free(p);
 }
 
+void lldp_on_neighbor_seen(lldp_neighbor_seen_cb cb)
+{
+	/* No barrier needed: this is called (from net_start, before
+	 * qeneth_netif_add spawns qn_rx_task) strictly before any task
+	 * that reads s_seen_cb exists.  If a future caller needs to
+	 * re-arm at runtime, also clear s_any_neighbor_seen (and consider
+	 * a critical section here for parity with raw_ethertype.c). */
+	s_seen_cb = cb;
+}
+
 bool lldp_get_neighbor_addr(ip_addr_t *out)
 {
 	bool have;
 
-	/* Defense in depth: lldp_init's failure is propagated to main, so we
-	 * shouldn't reach here with a NULL mutex.  If we do, return "no addr
+	/* Defense in depth: lldp_register's failure is propagated to main
+	 * (and with --lldp off the function isn't called at all), so this
+	 * branch should be unreachable.  If we do hit it, return "no addr
 	 * known" rather than crashing on xSemaphoreTake(NULL, ...). */
 	if (s_addr_mutex == NULL) {
 		return false;
@@ -325,7 +352,7 @@ bool lldp_get_neighbor_addr(ip_addr_t *out)
 
 /*------------------------------------------------------------------*/
 
-bool lldp_init(struct netif *netif, const struct app_cfg *cfg)
+bool lldp_register(const struct app_cfg *cfg)
 {
 	s_interval = (uint16_t)cfg->lldp_interval;
 	s_ttl = (uint16_t)cfg->lldp_ttl;
@@ -342,6 +369,11 @@ bool lldp_init(struct netif *netif, const struct app_cfg *cfg)
 		return false;
 	}
 
+	return true;
+}
+
+bool lldp_start(struct netif *netif)
+{
 	if (xTaskCreate(lldp_tx_task, "lldp", LLDP_TX_TASK_STACK, netif,
 			LLDP_TX_TASK_PRIO, NULL) != pdPASS) {
 		fprintf(stderr, "lldp: failed to create TX task\n");

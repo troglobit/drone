@@ -30,6 +30,7 @@ struct qn_state {
 	int fd;			 /* host UDP socket (bound to local addr) */
 	struct sockaddr_in peer; /* datagram destination */
 	uint8_t mac[6];
+	const char *hostname;	 /* caller-owned; lwIP DHCP option 12 */
 	struct netif *netif;
 };
 
@@ -135,16 +136,20 @@ static err_t qn_netif_init(struct netif *netif)
 #if LWIP_IPV6 && LWIP_IPV6_MLD
 	netif->flags |= NETIF_FLAG_MLD6;
 #endif
-	/* netif->hostname is left for the caller (net.c) to wire up from the
-	 * runtime --hostname.  lwIP's DHCP client uses it for option 12, so
-	 * setting it per-instance lets dnsmasq match each drone individually. */
+#if LWIP_NETIF_HOSTNAME
+	/* Set inside the netif_add init path so the RX task spawned at the
+	 * end of qeneth_netif_add() can't see netif->hostname==NULL: lwIP's
+	 * DHCP client emits option 12 from this pointer, and a NULL there
+	 * defeats dnsmasq's hostname-keyed static-lease matching. */
+	netif->hostname = s->hostname;
+#endif
 	return ERR_OK;
 }
 
 err_t qeneth_netif_add(struct netif *netif, const ip4_addr_t *ip,
 		       const ip4_addr_t *netmask, const ip4_addr_t *gw,
-		       const uint8_t mac[6], int sockfd, uint32_t peer_ip_be,
-		       uint16_t peer_port_be)
+		       const uint8_t mac[6], const char *hostname, int sockfd,
+		       uint32_t peer_ip_be, uint16_t peer_port_be)
 {
 	qn.fd = sockfd;
 	memset(&qn.peer, 0, sizeof(qn.peer));
@@ -152,6 +157,7 @@ err_t qeneth_netif_add(struct netif *netif, const ip4_addr_t *ip,
 	qn.peer.sin_addr.s_addr = peer_ip_be;
 	qn.peer.sin_port = peer_port_be;
 	memcpy(qn.mac, mac, sizeof(qn.mac));
+	qn.hostname = hostname;
 	qn.netif = netif;
 
 	LOCK_TCPIP_CORE();

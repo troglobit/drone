@@ -10,7 +10,7 @@
 # familiar autotools format.
 
 TESTS = test/autoip.sh test/ipv6.sh test/mdns.sh test/pair.sh test/mqtt.sh \
-        test/lldp.sh test/mdns-broker.sh
+        test/lldp.sh test/mdns-broker.sh test/dhcp-lldp.sh
 
 .PHONY: check
 

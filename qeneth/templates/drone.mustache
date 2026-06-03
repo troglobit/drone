@@ -16,7 +16,7 @@
 #   qn_bin     path to the drone binary           (default: "drone" on $PATH)
 #   qn_ip      static IPv4 address                (default: none -> AutoIP)
 #   qn_gw      default gateway                    (default: none -> AutoIP)
-#   qn_broker  MQTT broker ADDR[:PORT]   (default: none; discover via LLDP)
+#   qn_broker  MQTT broker ADDR[:PORT]   (default: none; needs --lldp to skip)
 #   qn_extra   extra args, e.g. "--run-broker"    (default: none)
 
 exec {{#qn_bin}}{{qn_bin}}{{/qn_bin}}{{^qn_bin}}drone{{/qn_bin}} \

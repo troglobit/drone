@@ -25,10 +25,16 @@ static void app_task(void *arg)
 {
 	const struct app_cfg *cfg = arg;
 
+	/* LLDP RX handler MUST be registered before qeneth_netif_add spawns
+	 * the RX task (inside net_start) -- otherwise the very first peer
+	 * LLDPDU lands at ethernet_input with no handler and is dropped. */
+	if (cfg->lldp && !lldp_register(cfg)) {
+		exit(EXIT_FAILURE);
+	}
 	if (net_start(cfg) != 0) {
 		exit(EXIT_FAILURE);
 	}
-	if (!lldp_init(net_netif(), cfg)) {
+	if (cfg->lldp && !lldp_start(net_netif())) {
 		exit(EXIT_FAILURE);
 	}
 	if (!mdns_resolve_init()) {
