@@ -2,7 +2,9 @@
  * mqtt_app.c - device-side MQTT client (lwIP apps/mqtt, raw API).
  *
  * Telemetry test patterns are published on dev/<id>/telemetry; commands are
- * received on dev/<id>/cmd and answered on dev/<id>/resp.  Supported commands:
+ * received on dev/<id>/cmd and answered on dev/<id>/resp.  Identity is
+ * published once at CONNACK on dev/<id>/info with retain=1 + QoS=1 so late
+ * subscribers can pick up mfg/model/fw without waiting.  Supported commands:
  *   ping | status | rate <ms> | pattern <ramp|sine|random|const> |
  *   led <on|off> | reboot
  *
@@ -41,6 +43,12 @@
 #define TWO_PI 6.28318530718
 #define SINE_PERIOD 64
 
+/* Set by the Makefile from `git describe --always --dirty`; the fallback is
+ * for ad-hoc builds outside the project Makefile. */
+#ifndef DRONE_VERSION
+#define DRONE_VERSION "unknown"
+#endif
+
 enum pattern { PAT_RAMP, PAT_SINE, PAT_RANDOM, PAT_CONST };
 
 static mqtt_client_t *s_client;
@@ -54,6 +62,7 @@ static char s_wait_msg[96];    /* what we tell the operator we're waiting on */
 static char s_topic_tel[64];
 static char s_topic_cmd[64];
 static char s_topic_resp[64];
+static char s_topic_info[64];
 
 static volatile int s_connected;
 static volatile int s_rate_ms = 1000;
@@ -268,10 +277,36 @@ static void connection_cb(mqtt_client_t *client, void *arg,
 	LWIP_UNUSED_ARG(arg);
 
 	if (status == MQTT_CONNECT_ACCEPTED) {
+		char  info[160];
+		int   n;
+		err_t e;
+
 		printf("mqtt: connected, publishing on %s\n", s_topic_tel);
 		mqtt_set_inpub_callback(client, incoming_publish_cb,
 					incoming_data_cb, NULL);
 		mqtt_subscribe(client, s_topic_cmd, 0, sub_cb, NULL);
+
+		/* Retained identity announce so a subscriber connecting
+		 * after us still picks up mfg/model/fw without polling.
+		 * No LOCK_TCPIP_CORE: we run on the tcpip thread already. */
+		n = snprintf(info, sizeof info,
+			     "{\"mfg\":\"Drone Sim\",\"model\":\"drone\","
+			     "\"fw\":\"%s\"}",
+			     DRONE_VERSION);
+		if ((n < 0) || ((size_t)n >= sizeof info)) {
+			/* Truncation or encoding error: clamp to what
+			 * fits so mqtt_publish doesn't read past info[]. */
+			n = (int)sizeof info - 1;
+		}
+		e = mqtt_publish(client, s_topic_info, info, (u16_t)n,
+				 /* qos */ 1, /* retain */ 1, NULL, NULL);
+		if (e != ERR_OK) {
+			printf("mqtt: info publish failed (%d); late "
+			       "subscribers will miss the retained "
+			       "identity\n",
+			       e);
+		}
+
 		s_connected = 1;
 	} else {
 		printf("mqtt: disconnected/refused (status=%d)\n", (int)status);
@@ -362,14 +397,29 @@ static void mqtt_task(void *arg)
 		}
 
 		{
-			char payload[160];
+			char payload[192];
 			int val = pattern_value(s_pattern, seq);
+			/* Synthetic temperature: slow sine, 20..30 degC. */
+			int temp =
+				(int)(25.0 +
+				      5.0 * sin(TWO_PI * (seq % SINE_PERIOD) /
+						SINE_PERIOD));
+			unsigned uptime =
+				(unsigned)(xTaskGetTickCount() *
+					   portTICK_PERIOD_MS / 1000);
 			int n = snprintf(payload, sizeof payload,
-					 "{\"seq\":%u,\"val\":%d,\"pattern\":"
-					 "\"%s\",\"led\":%d}",
-					 seq, val, pattern_name(s_pattern),
-					 s_led);
+					 "{\"seq\":%u,\"val\":%d,\"temp\":%d,"
+					 "\"uptime\":%u,\"pattern\":\"%s\","
+					 "\"led\":%d}",
+					 seq, val, temp, uptime,
+					 pattern_name(s_pattern), s_led);
 			err_t e;
+
+			/* Clamp to fit so (u16_t)n can't run mqtt_publish
+			 * past the end of payload[] on truncation. */
+			if ((n < 0) || ((size_t)n >= sizeof payload)) {
+				n = (int)sizeof payload - 1;
+			}
 
 			LOCK_TCPIP_CORE();
 			e = mqtt_publish(s_client, s_topic_tel, payload,
@@ -438,6 +488,8 @@ void mqtt_app_start(const struct app_cfg *cfg)
 		 cfg->hostname);
 	snprintf(s_topic_cmd, sizeof s_topic_cmd, "dev/%s/cmd", cfg->hostname);
 	snprintf(s_topic_resp, sizeof s_topic_resp, "dev/%s/resp",
+		 cfg->hostname);
+	snprintf(s_topic_info, sizeof s_topic_info, "dev/%s/info",
 		 cfg->hostname);
 
 	s_ci.client_id = s_clientid;

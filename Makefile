@@ -14,8 +14,18 @@ SRCS      = $(APP_SRCS) $(PORT_SRCS) $(FREERTOS_SRCS) $(LWIP_SRCS)
 LIBS      = $(BUILD)/liblwip.a $(BUILD)/libfreertos.a
 FMT_FILES = $(filter-out port/lwip/lwipopts.h, \
             $(wildcard src/*.[ch] port/*/*.[ch]))
+VERSION  := $(shell git describe --always --dirty 2>/dev/null || echo unknown)
 
-override CFLAGS  += $(WARN) -pthread -MMD -MP $(INCLUDES)
+# Refresh a tiny stamp file only when VERSION changes, so mqtt_app.o
+# rebuilds whenever (and only when) the embedded git-describe string
+# moves.  Without this, an incremental `make` after a commit would
+# reuse the prior mqtt_app.o and ship a stale fw= string.
+$(shell mkdir -p $(BUILD); \
+        prev=$$(cat $(BUILD)/.version 2>/dev/null); \
+        [ "$$prev" = "$(VERSION)" ] || echo "$(VERSION)" > $(BUILD)/.version)
+
+override CFLAGS  += $(WARN) -pthread -MMD -MP $(INCLUDES) \
+                    -DDRONE_VERSION='"$(VERSION)"'
 override LDFLAGS += -pthread -lm
 
 include lib/freertos.mk
@@ -34,6 +44,10 @@ $(BIN): $(APP_OBJS) $(PORT_OBJS) $(LIBS) | $(BUILD)
 
 $(BUILD)/obj/%.o: %.c | $(BUILD)/obj
 	$(CC) $(CFLAGS) -c $< -o $@
+
+# mqtt_app.o embeds DRONE_VERSION; force-rebuild it when the stamp
+# (and therefore the git-describe output) has changed since last build.
+$(BUILD)/obj/mqtt_app.o: $(BUILD)/.version
 
 $(BUILD) $(BUILD)/obj:
 	@mkdir -p $@

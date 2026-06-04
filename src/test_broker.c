@@ -115,14 +115,32 @@ static void handle_packet(uint8_t type, uint8_t flags, const uint8_t *p,
 
 	case 3: /* PUBLISH */
 	{
-		u16_t tlen = (u16_t)((p[0] << 8) | p[1]);
+		u16_t tlen;
 		u8_t qos = (flags >> 1) & 0x03;
-		const char *topic = (const char *)(p + 2);
+		const char *topic;
 		char tbuf[64];
 		const uint8_t *data;
-		size_t dlen, off = 2 + tlen;
+		size_t dlen, off;
+		u16_t pid = 0;
+
+		/* Defensive bounds checks: tlen and (for QoS>0) the
+		 * packet-id come straight off the wire and a malformed
+		 * peer could otherwise drive an OOB read on s_rx. */
+		if (len < 2) {
+			break;
+		}
+		tlen = (u16_t)((p[0] << 8) | p[1]);
+		if (tlen > len - 2) {
+			break;
+		}
+		off = 2 + tlen;
+		topic = (const char *)(p + 2);
 
 		if (qos > 0) {
+			if (off + 2 > len) {
+				break;
+			}
+			pid = (u16_t)((p[off] << 8) | p[off + 1]);
 			off += 2; /* packet id */
 		}
 		data = p + off;
@@ -130,6 +148,15 @@ static void handle_packet(uint8_t type, uint8_t flags, const uint8_t *p,
 
 		snprintf(tbuf, sizeof tbuf, "%.*s", tlen, topic);
 		printf("test-broker: <- [%s] %.*s\n", tbuf, (int)dlen, data);
+
+		if (qos == 1) {
+			/* Ack so the client doesn't sit retransmitting; we
+			 * don't actually queue or retain anything. */
+			uint8_t puback[] = { 0x40, 0x02,
+					     (uint8_t)(pid >> 8),
+					     (uint8_t)(pid & 0xff) };
+			tcp_send(puback, sizeof puback);
+		}
 
 		learn_dev_id(tbuf);
 		if (!s_cmd_started && (s_dev_id[0] != '\0')) {
@@ -274,7 +301,11 @@ static void cmd_task(void *arg)
 	LWIP_UNUSED_ARG(arg);
 
 	snprintf(topic, sizeof topic, "dev/%s/cmd", s_dev_id);
-	vTaskDelay(pdMS_TO_TICKS(1500)); /* let some telemetry flow first */
+	/* Pause briefly so telemetry has a chance to flow before the
+	 * scripted commands start.  (The very first publish from the
+	 * device is the retained dev/<id>/info announce, which fires
+	 * this task; telemetry begins right after on its own cadence.) */
+	vTaskDelay(pdMS_TO_TICKS(1500));
 
 	for (size_t i = 0; i < (sizeof(cmds) / sizeof(cmds[0])); i++) {
 		printf("test-broker: -> cmd \"%s\"\n", cmds[i]);
