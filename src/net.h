@@ -37,8 +37,14 @@ struct app_cfg {
 	int ping_count;
 };
 
+enum cfg_result {
+	CFG_OK,	   /* config is parsed, carry on                     */
+	CFG_DONE,  /* nothing to run (--help/--version were printed) */
+	CFG_ERROR, /* bad usage, diagnostic already printed          */
+};
+
 void app_cfg_defaults(struct app_cfg *c);
-int app_cfg_parse(struct app_cfg *c, int argc, char **argv); /* 0 = ok */
+enum cfg_result app_cfg_parse(struct app_cfg *c, int argc, char **argv);
 void app_cfg_finalize(struct app_cfg *c); /* derive defaults that depend
 						 on other fields (hostname). */
 

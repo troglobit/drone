@@ -11,13 +11,18 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include "FreeRTOS.h"
+#include "task.h"
+
 #include "lwip/tcpip.h"
 #include "lwip/netif.h"
 #include "lwip/ip4_addr.h"
 #include "lwip/autoip.h"
 #include "lwip/dhcp.h"
+#include "lwip/init.h"
 
 #include "net.h"
+#include "version.h"
 #include "ping.h"
 #include "lldp.h"
 #include "qeneth_netif.h"
@@ -65,9 +70,9 @@ static int parse_mac(const char *s, uint8_t mac[6])
 	return 0;
 }
 
-static void usage(const char *argv0)
+static void usage(FILE *fp, const char *argv0)
 {
-	fprintf(stderr,
+	fprintf(fp,
 		"usage: %s [options]\n"
 		"      --localaddr HOST:PORT  bind the link UDP socket here "
 		"(default 127.0.0.1:20000)\n"
@@ -104,8 +109,16 @@ static void usage(const char *argv0)
 		"bring-up\n"
 		"  -n, --ping-count NUM       echo-request count (default "
 		"4)\n"
-		"  -h, --help                 this help\n",
+		"  -h, --help                 this help\n"
+		"  -v, --version              show version\n",
 		argv0);
+}
+
+static void version(void)
+{
+	printf("drone %s\n", DRONE_VERSION);
+	printf("FreeRTOS %s, lwIP %s\n", tskKERNEL_VERSION_NUMBER,
+	       LWIP_VERSION_STRING);
 }
 
 /* Long-only option keys.  Values >= 256 stay out of the short-option char
@@ -127,7 +140,7 @@ enum {
 	OPT_NO_MQTT,
 };
 
-int app_cfg_parse(struct app_cfg *c, int argc, char **argv)
+enum cfg_result app_cfg_parse(struct app_cfg *c, int argc, char **argv)
 {
 	static const struct option long_opts[] = {
 		{ "localaddr",	   required_argument, NULL, OPT_LOCALADDR },
@@ -147,6 +160,7 @@ int app_cfg_parse(struct app_cfg *c, int argc, char **argv)
 		{ "ping",	   required_argument, NULL, 'p' },
 		{ "ping-count",	   required_argument, NULL, 'n' },
 		{ "help",	   no_argument,	      NULL, 'h' },
+		{ "version",	   no_argument,	      NULL, 'v' },
 		{ 0, 0, 0, 0 }
 	};
 	int opt;
@@ -155,7 +169,7 @@ int app_cfg_parse(struct app_cfg *c, int argc, char **argv)
 	 * glibc keeps optind across calls otherwise. */
 	optind = 1;
 
-	while ((opt = getopt_long(argc, argv, "hp:n:", long_opts, NULL)) !=
+	while ((opt = getopt_long(argc, argv, "hvp:n:", long_opts, NULL)) !=
 	       -1) {
 		switch (opt) {
 		case OPT_LOCALADDR:
@@ -177,7 +191,7 @@ int app_cfg_parse(struct app_cfg *c, int argc, char **argv)
 		case OPT_MAC:
 			if (parse_mac(optarg, c->mac) != 0) {
 				fprintf(stderr, "bad --mac\n");
-				return -1;
+				return CFG_ERROR;
 			}
 			break;
 		case OPT_HOSTNAME:
@@ -206,7 +220,7 @@ int app_cfg_parse(struct app_cfg *c, int argc, char **argv)
 				fprintf(stderr,
 					"--lldp-interval must be >= 1 (got '%s')\n",
 					optarg);
-				return -1;
+				return CFG_ERROR;
 			}
 			break;
 		case OPT_LLDP_TTL:
@@ -215,7 +229,7 @@ int app_cfg_parse(struct app_cfg *c, int argc, char **argv)
 				fprintf(stderr,
 					"--lldp-ttl must be >= 1 (got '%s')\n",
 					optarg);
-				return -1;
+				return CFG_ERROR;
 			}
 			break;
 		case OPT_RUN_BROKER:
@@ -233,23 +247,26 @@ int app_cfg_parse(struct app_cfg *c, int argc, char **argv)
 			c->ping_count = atoi(optarg);
 			break;
 		case 'h':
-			usage(argv[0]);
-			return -1;
+			usage(stdout, argv[0]);
+			return CFG_DONE;
+		case 'v':
+			version();
+			return CFG_DONE;
 		default:
 			/* getopt_long already printed a diagnostic for
 			 * unknown options and missing required arguments. */
-			usage(argv[0]);
-			return -1;
+			usage(stderr, argv[0]);
+			return CFG_ERROR;
 		}
 	}
 
 	if (optind < argc) {
 		fprintf(stderr, "unexpected argument: %s\n", argv[optind]);
-		usage(argv[0]);
-		return -1;
+		usage(stderr, argv[0]);
+		return CFG_ERROR;
 	}
 
-	return 0;
+	return CFG_OK;
 }
 
 void app_cfg_finalize(struct app_cfg *c)

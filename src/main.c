@@ -58,7 +58,12 @@ int main(int argc, char **argv)
 	srand((unsigned)(time(NULL) ^ getpid()));
 
 	app_cfg_defaults(&g_cfg);
-	if (app_cfg_parse(&g_cfg, argc, argv) != 0) {
+	switch (app_cfg_parse(&g_cfg, argc, argv)) {
+	case CFG_OK:
+		break;
+	case CFG_DONE:
+		return EXIT_SUCCESS;
+	case CFG_ERROR:
 		return EXIT_FAILURE;
 	}
 	app_cfg_finalize(&g_cfg);
