@@ -39,15 +39,10 @@
 #include "lldp.h"
 #include "mdns_resolve.h"
 #include "mqtt_app.h"
+#include "version.h"
 
 #define TWO_PI 6.28318530718
 #define SINE_PERIOD 64
-
-/* Set by the Makefile from `git describe --always --dirty`; the fallback is
- * for ad-hoc builds outside the project Makefile. */
-#ifndef DRONE_VERSION
-#define DRONE_VERSION "unknown"
-#endif
 
 enum pattern { PAT_RAMP, PAT_SINE, PAT_RANDOM, PAT_CONST };
 

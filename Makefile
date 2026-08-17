@@ -9,23 +9,14 @@ BUILD    ?= build
 BIN       = $(BUILD)/drone
 WARN      = -Wall -Wextra
 CFLAGS   ?= -O0 -g
-INCLUDES  = $(APP_INCS) $(PORT_INCS) $(FREERTOS_INCS) $(LWIP_INCS)
+INCLUDES  = -I$(BUILD) $(APP_INCS) $(PORT_INCS) $(FREERTOS_INCS) $(LWIP_INCS)
 SRCS      = $(APP_SRCS) $(PORT_SRCS) $(FREERTOS_SRCS) $(LWIP_SRCS)
 LIBS      = $(BUILD)/liblwip.a $(BUILD)/libfreertos.a
 FMT_FILES = $(filter-out port/lwip/lwipopts.h, \
             $(wildcard src/*.[ch] port/*/*.[ch]))
 VERSION  := $(shell git describe --always --dirty 2>/dev/null || echo unknown)
 
-# Refresh a tiny stamp file only when VERSION changes, so mqtt_app.o
-# rebuilds whenever (and only when) the embedded git-describe string
-# moves.  Without this, an incremental `make` after a commit would
-# reuse the prior mqtt_app.o and ship a stale fw= string.
-$(shell mkdir -p $(BUILD); \
-        prev=$$(cat $(BUILD)/.version 2>/dev/null); \
-        [ "$$prev" = "$(VERSION)" ] || echo "$(VERSION)" > $(BUILD)/.version)
-
-override CFLAGS  += $(WARN) -pthread -MMD -MP $(INCLUDES) \
-                    -DDRONE_VERSION='"$(VERSION)"'
+override CFLAGS  += $(WARN) -pthread -MMD -MP $(INCLUDES)
 override LDFLAGS += -pthread -lm
 
 include lib/freertos.mk
@@ -42,12 +33,20 @@ $(BIN): $(APP_OBJS) $(PORT_OBJS) $(LIBS) | $(BUILD)
 	$(CC) $(APP_OBJS) $(PORT_OBJS) $(LIBS) $(LDFLAGS) -o $@
 	@echo "built $@"
 
-$(BUILD)/obj/%.o: %.c | $(BUILD)/obj
+$(BUILD)/obj/%.o: %.c | $(BUILD)/obj $(BUILD)/version.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# mqtt_app.o embeds DRONE_VERSION; force-rebuild it when the stamp
-# (and therefore the git-describe output) has changed since last build.
-$(BUILD)/obj/mqtt_app.o: $(BUILD)/.version
+# The version reaches the objects through a generated header rather than a -D
+# so that -MMD dependency tracking sees it move: an incremental `make` after a
+# commit would otherwise reuse objects built against the old string and ship a
+# stale fw= in the telemetry.  FORCE re-checks it on every build, but the file
+# is rewritten only when git describe output differs, so the .d files rebuild
+# exactly the objects that include it -- and nothing else.
+$(BUILD)/version.h: FORCE | $(BUILD)
+	@new='#define DRONE_VERSION "$(VERSION)"'; \
+	 [ "$$new" = "$$(cat $@ 2>/dev/null)" ] || echo "$$new" > $@
+
+FORCE:
 
 $(BUILD) $(BUILD)/obj:
 	@mkdir -p $@
