@@ -1,0 +1,60 @@
+name: Release General
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Build and upload release binary
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      MAKEFLAGS: -j3
+      CFLAGS: -O2 -g
+      # Static so the binary drops into any topology -- a qeneth container, an
+      # Infix test rig -- without matching the host's glibc.  Nothing in the
+      # tree calls getaddrinfo(), gethostbyname(), or dlopen(); name lookups
+      # are lwIP's and mDNS is answered in-tree, so there is no NSS to lose.
+      LDFLAGS: -static
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # git describe feeds the version drone reports and publishes, so the
+          # tag itself has to be in the checkout.
+          fetch-depth: 0
+      - name: Fetch submodules
+        run: git submodule update --init --depth 1
+      - name: Build
+        run: make
+      - name: Check binary
+        run: |
+          file build/drone
+          case "$(file -b build/drone)" in
+              *"statically linked"*) ;;
+              *) echo "::error::release binary is not static"; exit 1 ;;
+          esac
+          # The tag is what users see; the string compiled into the binary is
+          # what it reports over MQTT.  They have to agree, or a device in the
+          # field cannot be traced back to a release.
+          version=$(./build/drone --version | sed -n '1s/^drone //p')
+          if [ "$version" != "${{ github.ref_name }}" ]; then
+              echo "::error::built $version, tagged ${{ github.ref_name }}"
+              exit 1
+          fi
+      - name: Prepare release binary
+        run: |
+          mkdir -p artifacts
+          strip -o artifacts/drone-x86_64-linux build/drone
+          ls -l artifacts/
+      # The asset name deliberately carries no version: the release tag says
+      # which build it is, so dragnet can pin
+      # releases/latest/download/drone-x86_64-linux and never edit a URL.
+      # `drone --version` in the binary reports the exact tag.
+      - uses: ncipollo/release-action@v1
+        with:
+          name: drone ${{ github.ref_name }}
+          artifacts: "artifacts/*"
+          generateReleaseNotes: true
