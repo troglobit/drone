@@ -1,0 +1,69 @@
+name: Bob the Builder
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - '**'
+
+# A push to a branch that also has an open PR fires both a 'push' and a
+# 'pull_request' event.  Key the group on the branch name -- which both
+# events resolve to -- so the second cancels the first instead of running
+# the same tree twice.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # Verify we can build on latest Ubuntu with both gcc and clang.  The
+    # self-tests need nothing but a shell -- drone plays both end-device
+    # and broker itself -- so there are no dependencies to install.
+    name: ${{ matrix.compiler }}
+    strategy:
+      matrix:
+        compiler: [gcc, clang]
+      fail-fast: false
+    runs-on: ubuntu-latest
+    env:
+      MAKEFLAGS: -j3
+      CC: ${{ matrix.compiler }}
+      CFLAGS: -O2 -g
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # git describe feeds DRONE_VERSION, which drone publishes in the
+          # telemetry fw= field, so the tags have to be here.  This repo's
+          # own history is ~40 KiB; the weight is all in the submodules,
+          # cloned shallow below.
+          fetch-depth: 0
+      - name: Fetch submodules
+        run: git submodule update --init --depth 1
+      - name: Build
+        run: make
+      # test/version.sh covers the --help/--version contract itself.  What
+      # only holds here is that the checkout was deep enough for git describe
+      # to find the tags, and clean: a developer tree is legitimately -dirty.
+      - name: Version
+        id: version
+        run: |
+          version=$(./build/drone --version | sed -n '1s/^drone //p')
+          case "$version" in
+              ""|unknown|*-dirty)
+                  echo "::error::bad version string '$version'"
+                  exit 1
+                  ;;
+          esac
+          echo "version=$version" | tee -a $GITHUB_OUTPUT
+      - name: Run Tests
+        run: make check
+      # Keep the ELF around even when the tests fail -- chasing a failure is
+      # easier with the exact binary CI ran.  Unstripped, it carries the -g
+      # debug info.
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: drone-${{ steps.version.outputs.version }}-${{ matrix.compiler }}
+          path: build/drone
